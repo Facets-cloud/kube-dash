@@ -46,7 +46,7 @@ const NodeDetailsContainer = memo(function () {
     toast.error("Configuration Error", {
       description: "The configuration you were viewing has been deleted or is no longer available. Redirecting to configuration page.",
     });
-    navigate({ to: '/config' });
+            navigate({ to: '/' });
   };
 
   useEventSource({

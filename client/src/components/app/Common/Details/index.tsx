@@ -63,8 +63,8 @@ const KwDetails = () => {
     const currentPath = router.location.pathname;
     const pathSegments = currentPath.split('/');
     
-    // Check if we're on a config-specific route (not /config or /)
-    if (pathSegments.length > 1 && pathSegments[1] !== 'config' && pathSegments[1] !== '') {
+    // Check if we're on a config-specific route (not /)
+    if (pathSegments.length > 1 && pathSegments[1] !== '') {
       const configId = pathSegments[1];
       
       // Only check if clusters are loaded and not empty, and not currently loading
@@ -77,7 +77,7 @@ const KwDetails = () => {
             });
             hasShownConfigNotFoundToast.current = true;
           }
-          navigate({ to: '/config' });
+          navigate({ to: '/' });
         }
       }
     } else {

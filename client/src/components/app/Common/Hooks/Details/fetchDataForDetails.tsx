@@ -201,7 +201,7 @@ const useFetchDataForDetails = ({
     toast.error("Configuration Error", {
       description: "The configuration you were viewing has been deleted or is no longer available. Redirecting to configuration page.",
     });
-    navigate({ to: '/config' });
+            navigate({ to: '/' });
   };
 
   // For pods, deployments, and other namespace-scoped resources, we need to use the namespace/name pattern in the URL

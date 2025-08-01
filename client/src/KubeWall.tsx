@@ -36,8 +36,8 @@ export function KubeWall() {
     const currentPath = router.location.pathname;
     const pathSegments = currentPath.split('/');
     
-    // Check if we're on a config-specific route (not /config or /)
-    if (pathSegments.length > 1 && pathSegments[1] !== 'config' && pathSegments[1] !== '') {
+    // Check if we're on a config-specific route (not /)
+    if (pathSegments.length > 1 && pathSegments[1] !== '') {
       const configId = pathSegments[1];
       
       // Only check if clusters are loaded and not empty, and not currently loading
@@ -50,11 +50,11 @@ export function KubeWall() {
             });
             hasShownConfigNotFoundToast.current = true;
           }
-          navigate({ to: '/config' });
+          navigate({ to: '/' });
         }
       }
     } else {
-      // Reset the flag when we're not on a config-specific route
+      // Reset the flag when we're on the root route
       hasShownConfigNotFoundToast.current = false;
     }
   }, [clusters, navigate, router.location.pathname]);
@@ -64,7 +64,7 @@ export function KubeWall() {
   };
   return (
     <>
-      {pathname === '/config' || pathname === "/" ? (
+      {pathname === "/" ? (
         <Outlet />
       ) : (
         <div className="h-screen flex">
@@ -109,7 +109,7 @@ export function KubeWall() {
                 <Tooltip delayDuration={0}>
                   <TooltipTrigger asChild>
                     <Link
-                      to="/config"
+                      to="/"
                       href="#"
                       className={cn(buttonVariants({ variant: 'ghost', size: 'icon' }), 'h-10 w-10', 'border', 'shadow-none', 'mt-1', 'ml-0.5')}
                     >

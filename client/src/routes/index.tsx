@@ -1,4 +1,4 @@
-import { Navigate, createRootRoute, createRoute, createRouter } from '@tanstack/react-router';
+import { createRootRoute, createRoute, createRouter } from '@tanstack/react-router';
 import { kwDetailsSearch, kwListSearch } from '@/types';
 
 import FourOFourError from "@/components/app/Errors/404Error";
@@ -19,7 +19,7 @@ const rootRoute = createRootRoute({
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
-  component: () => <Navigate to="/config" />
+  component: KubeConfiguration,
 });
 
 const appRoute = createRoute({
@@ -76,15 +76,8 @@ const cloudShellRoute = createRoute({
 
 
 
-const kubeConfigurationRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/config',
-  component: KubeConfiguration,
-});
-
 const routeTree = rootRoute.addChildren([
   indexRoute,
-  kubeConfigurationRoute,
   appRoute.addChildren([
     kwList,
     kwDetails,
