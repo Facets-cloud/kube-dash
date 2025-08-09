@@ -168,9 +168,9 @@ export function DataTable<TData, TValue>({
           </TableHeader>
           <TableBody>
             {table.getRowModel().rows?.length ? (
-              table.getRowModel().rows.map((row, index) => (
+              table.getRowModel().rows.map((row) => (
                 <TableRow
-                  key={index}
+                  key={row.id}
                   id={getIdAndSetClass(row.original.hasUpdated, row.original.name)}
                   data-state={row.getIsSelected() && 'selected'}
                 >
