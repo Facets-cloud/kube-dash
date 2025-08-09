@@ -91,6 +91,8 @@ const Sidebar = memo(function ({ className }: SidebarProps) {
     routerForce.invalidate();
   };
 
+  
+
   // const onCustomResourcesNavClick = (route: string, name: string) => {
   //   dispatch(resetListTableFilter());
   //   // Clear any existing permission errors when navigating to a different resource
@@ -136,6 +138,8 @@ const Sidebar = memo(function ({ className }: SidebarProps) {
   const getActiveNav = (route: string, check = false) => {
     return route === (!check ? queryParams.get('kind') : queryParams.get('resourcekind'));
   };
+
+  
   return (
     <div className={cn("col-span-1", className)}>
       <div className="h-screen space-y-4 py-1">
@@ -160,6 +164,7 @@ const Sidebar = memo(function ({ className }: SidebarProps) {
                       </SidebarMenuButton>
                       <SidebarNavigator setOpenMenus={setOpenMenus} />
                     </SidebarMenuItem>
+                    
                     {
                       Object.keys(NAVIGATION_ROUTE).map((route) => (
                         <Collapsible
