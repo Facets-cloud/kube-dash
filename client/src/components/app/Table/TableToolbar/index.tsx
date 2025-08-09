@@ -17,6 +17,7 @@ import { resetFilterNamespace } from "@/data/Misc/ListTableNamesapceSlice";
 import { updateListTableFilter } from "@/data/Misc/ListTableFilterSlice";
 import { Kbd } from "@/components/ui/kbd";
 import { ConnectionStatusIndicator } from "@/components/app/Common/ConnectionStatus";
+import TableDelete from "@/components/app/Table/TableDelete";
 
 type DataTableToolbarProps<TData> = {
   table: Table<TData>;
@@ -93,7 +94,15 @@ export function DataTableToolbar<TData>({
         }
         <ConnectionStatusIndicator status={connectionStatus} />
       </div>
+      {/* Place delete next to view options (top-right); show only when rows are selected */}
       <DataTableViewOptions table={table} />
+      {table.getSelectedRowModel().rows.length > 0 && (
+        <TableDelete
+          // eslint-disable-next-line  @typescript-eslint/no-explicit-any
+          selectedRows={table.getSelectedRowModel().rows as any}
+          toggleAllRowsSelected={(value: boolean) => table.toggleAllPageRowsSelected(!value)}
+        />
+      )}
       <AddResource />
       <ThemeModeSelector />
     </div>

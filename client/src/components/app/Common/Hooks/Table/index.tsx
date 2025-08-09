@@ -4,7 +4,8 @@ import { defaultSkeletonRow, getEventStreamUrl } from "@/utils";
 import { ActionCreatorWithPayload } from "@reduxjs/toolkit";
 import { DataTable } from "@/components/app/Table";
 import { cn } from "@/lib/utils";
-import { useAppDispatch } from "@/redux/hooks";
+import { useAppDispatch, useAppSelector } from "@/redux/hooks";
+import { RootState } from "@/redux/store";
 import { useEventSource } from "../EventSource";
 import useGenerateColumns from "../TableColumns";
 import { useSidebar } from "@/components/ui/sidebar";
@@ -81,14 +82,20 @@ const CreateTable = <T extends ClusterDetails, C extends HeaderList>({
     return () => clearTimeout(timer);
   }, [endpoint, dispatch]);
 
+  const refreshNonce = useAppSelector((state: RootState) => (state as any).listTableRefresh?.refreshNonce);
+
+  // Append refresh nonce to force SSE reconnect and reload data after deletes
+  const sseUrl = getEventStreamUrl(endpoint, queryParmObject, '', refreshNonce ? `&r=${refreshNonce}` : '');
+
   useEventSource<any[]>({
-    url: getEventStreamUrl(endpoint, queryParmObject),
+    url: sseUrl,
     sendMessage,
     onConnectionStatusChange: setConnectionStatus,
     onConfigError: handleConfigError,
     onPermissionError: handlePermissionError,
     setLoading,
   });
+
 
   const { open, isMobile } = useSidebar();
 

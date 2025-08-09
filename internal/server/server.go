@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Facets-cloud/kube-dash/internal/api"
+	handlers "github.com/Facets-cloud/kube-dash/internal/api/handlers"
 	access_control "github.com/Facets-cloud/kube-dash/internal/api/handlers/access-control"
 	"github.com/Facets-cloud/kube-dash/internal/api/handlers/cloudshell"
 	"github.com/Facets-cloud/kube-dash/internal/api/handlers/cluster"
@@ -35,6 +36,8 @@ type Server struct {
 	store         *storage.KubeConfigStore
 	clientFactory *k8s.ClientFactory
 	kubeHandler   *api.KubeConfigHandler
+	// Base resources handler for generic operations (delete, permission checks)
+	baseResourcesHandler *handlers.ResourcesHandler
 
 	// Configuration handlers
 	configMapsHandler           *configurations.ConfigMapsHandler
@@ -112,6 +115,7 @@ func New(cfg *config.Config) *Server {
 	store := storage.NewKubeConfigStore()
 	clientFactory := k8s.NewClientFactory()
 	kubeHandler := api.NewKubeConfigHandler(store, clientFactory, log)
+	baseResourcesHandler := handlers.NewResourcesHandler(store, clientFactory, log)
 
 	// Create configuration handlers
 	configMapsHandler := configurations.NewConfigMapsHandler(store, clientFactory, log)
@@ -172,12 +176,13 @@ func New(cfg *config.Config) *Server {
 
 	// Create server
 	srv := &Server{
-		config:        cfg,
-		logger:        log,
-		router:        router,
-		store:         store,
-		clientFactory: clientFactory,
-		kubeHandler:   kubeHandler,
+		config:               cfg,
+		logger:               log,
+		router:               router,
+		store:                store,
+		clientFactory:        clientFactory,
+		kubeHandler:          kubeHandler,
+		baseResourcesHandler: baseResourcesHandler,
 
 		// Configuration handlers
 		configMapsHandler:           configMapsHandler,
@@ -306,6 +311,11 @@ func (s *Server) setupRoutes() {
 		api.GET("/customresourcedefinitions/:name", s.customResourceDefinitionsHandler.GetCustomResourceDefinition)
 		api.GET("/customresources", s.customResourcesHandler.GetCustomResourcesSSE)
 		api.GET("/customresources/:namespace/:name", s.customResourcesHandler.GetCustomResource)
+
+		// Generic delete endpoint (bulk)
+		api.DELETE("/:resourcekind", s.baseResourcesHandler.DeleteResources)
+		// Permission check endpoint for actions like delete
+		api.GET("/permissions/check", s.baseResourcesHandler.CheckPermission)
 
 		// ConfigMaps endpoints
 		api.GET("/configmaps", s.configMapsHandler.GetConfigMapsSSE)

@@ -85,6 +85,7 @@ import { helmReleasesReducer, helmReleaseDetailsReducer } from '@/data/Helm';
 import helmReleaseResourcesReducer from '@/data/Helm/HelmReleaseResourcesSlice';
 import cloudShellSlice from '@/data/CloudShell/CloudShellSlice';
 import permissionErrorsSlice from '@/data/PermissionErrors/PermissionErrorsSlice';
+import listTableRefreshSlice from '@/data/Misc/ListTableRefreshSlice';
 
 const store = configureStore({
   reducer: {
@@ -175,6 +176,7 @@ const store = configureStore({
     helmReleaseDetails: helmReleaseDetailsReducer,
     helmReleaseResources: helmReleaseResourcesReducer,
     permissionErrors: permissionErrorsSlice
+    ,listTableRefresh: listTableRefreshSlice
   },
 });
 

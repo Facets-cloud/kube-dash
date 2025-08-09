@@ -14,6 +14,7 @@ import { PodExec } from "../../MiscDetailsContainer/PodExec";
 import { RootState } from "@/redux/store";
 
 import { ScaleDeployments } from "../../MiscDetailsContainer/Deployments/ScaleDeployments";
+import TableDelete from "../../Table/TableDelete";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 
@@ -137,11 +138,13 @@ const KwDetails = () => {
                     {resourceData?.subHeading}
                   </h2>
                 </div>
-                <div className="ml-auto">
+                <div className="ml-auto flex items-center gap-2">
                   {
                     resourcekind === 'deployments' && 
                     <ScaleDeployments resourcename={resourcename} queryParams={new URLSearchParams(queryParamsObj).toString()}/>
                   }
+                  {/* Delete on details page reuses the same component with empty selectedRows; it will use params */}
+                  <TableDelete selectedRows={[]} />
                 </div>
 
               </div>

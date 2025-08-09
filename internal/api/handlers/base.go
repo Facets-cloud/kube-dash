@@ -11,6 +11,9 @@ import (
 	"github.com/Facets-cloud/kube-dash/pkg/logger"
 
 	"github.com/gin-gonic/gin"
+	authorizationv1 "k8s.io/api/authorization/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
@@ -102,6 +105,220 @@ func (h *ResourcesHandler) getDynamicClient(c *gin.Context) (dynamic.Interface, 
 	}
 
 	return dynamicClient, nil
+}
+
+// DeleteResourcesRequest represents a delete request body
+type DeleteResourcesRequest []struct {
+	Name      string `json:"name"`
+	Namespace string `json:"namespace,omitempty"`
+}
+
+// DeleteResourcesResponse represents the response containing failures
+type DeleteResourcesResponse struct {
+	Failures []struct {
+		Name      string `json:"name"`
+		Message   string `json:"message"`
+		Namespace string `json:"namespace,omitempty"`
+	} `json:"failures"`
+}
+
+// resourceMapping maps resource kinds (as used in API routes) to GroupVersionResource and scope
+var resourceMapping = map[string]struct {
+	GVR        schema.GroupVersionResource
+	Namespaced bool
+}{
+	// Core v1
+	"pods":                   {schema.GroupVersionResource{Group: "", Version: "v1", Resource: "pods"}, true},
+	"services":               {schema.GroupVersionResource{Group: "", Version: "v1", Resource: "services"}, true},
+	"endpoints":              {schema.GroupVersionResource{Group: "", Version: "v1", Resource: "endpoints"}, true},
+	"configmaps":             {schema.GroupVersionResource{Group: "", Version: "v1", Resource: "configmaps"}, true},
+	"secrets":                {schema.GroupVersionResource{Group: "", Version: "v1", Resource: "secrets"}, true},
+	"namespaces":             {schema.GroupVersionResource{Group: "", Version: "v1", Resource: "namespaces"}, false},
+	"nodes":                  {schema.GroupVersionResource{Group: "", Version: "v1", Resource: "nodes"}, false},
+	"persistentvolumes":      {schema.GroupVersionResource{Group: "", Version: "v1", Resource: "persistentvolumes"}, false},
+	"persistentvolumeclaims": {schema.GroupVersionResource{Group: "", Version: "v1", Resource: "persistentvolumeclaims"}, true},
+
+	// Networking v1
+	"ingresses": {schema.GroupVersionResource{Group: "networking.k8s.io", Version: "v1", Resource: "ingresses"}, true},
+
+	// Apps v1
+	"deployments":  {schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "deployments"}, true},
+	"daemonsets":   {schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "daemonsets"}, true},
+	"statefulsets": {schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "statefulsets"}, true},
+	"replicasets":  {schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "replicasets"}, true},
+
+	// Batch v1
+	"jobs":     {schema.GroupVersionResource{Group: "batch", Version: "v1", Resource: "jobs"}, true},
+	"cronjobs": {schema.GroupVersionResource{Group: "batch", Version: "v1", Resource: "cronjobs"}, true},
+
+	// Autoscaling (prefer v2 when available)
+	"horizontalpodautoscalers": {schema.GroupVersionResource{Group: "autoscaling", Version: "v2", Resource: "horizontalpodautoscalers"}, true},
+
+	// Policy / Scheduling / Node / Storage
+	"poddisruptionbudgets": {schema.GroupVersionResource{Group: "policy", Version: "v1", Resource: "poddisruptionbudgets"}, true},
+	"priorityclasses":      {schema.GroupVersionResource{Group: "scheduling.k8s.io", Version: "v1", Resource: "priorityclasses"}, false},
+	"runtimeclasses":       {schema.GroupVersionResource{Group: "node.k8s.io", Version: "v1", Resource: "runtimeclasses"}, false},
+	"storageclasses":       {schema.GroupVersionResource{Group: "storage.k8s.io", Version: "v1", Resource: "storageclasses"}, false},
+
+	// RBAC
+	"serviceaccounts":     {schema.GroupVersionResource{Group: "", Version: "v1", Resource: "serviceaccounts"}, true},
+	"roles":               {schema.GroupVersionResource{Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "roles"}, true},
+	"rolebindings":        {schema.GroupVersionResource{Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "rolebindings"}, true},
+	"clusterroles":        {schema.GroupVersionResource{Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "clusterroles"}, false},
+	"clusterrolebindings": {schema.GroupVersionResource{Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "clusterrolebindings"}, false},
+}
+
+// DeleteResources handles bulk deletion for various Kubernetes resources
+func (h *ResourcesHandler) DeleteResources(c *gin.Context) {
+	resourceKind := c.Param("resourcekind")
+
+	// Parse request body
+	var req DeleteResourcesRequest
+	if err := c.BindJSON(&req); err != nil {
+		h.logger.WithError(err).Error("Failed to parse delete request body")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+
+	if len(req) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "no resources provided"})
+		return
+	}
+
+	// Handle custom resources via explicit GVR parameters
+	var gvr schema.GroupVersionResource
+	var namespaced bool
+	if resourceKind == "customresources" {
+		group := c.Query("group")
+		version := c.Query("version")
+		resource := c.Query("resource")
+		if group == "" || version == "" || resource == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "group, version and resource query params are required for customresources"})
+			return
+		}
+		gvr = schema.GroupVersionResource{Group: group, Version: version, Resource: resource}
+		// Determine scope based on presence of namespace in items; mixed scopes are not supported
+		namespaced = false
+		for _, item := range req {
+			if item.Namespace != "" {
+				namespaced = true
+				break
+			}
+		}
+	} else {
+		mapping, ok := resourceMapping[resourceKind]
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("unsupported resource kind: %s", resourceKind)})
+			return
+		}
+		gvr = mapping.GVR
+		namespaced = mapping.Namespaced
+	}
+
+	dynamicClient, err := h.getDynamicClient(c)
+	if err != nil {
+		h.logger.WithError(err).Error("Failed to get dynamic client for delete")
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Process deletions and collect failures
+	resp := DeleteResourcesResponse{Failures: []struct {
+		Name      string `json:"name"`
+		Message   string `json:"message"`
+		Namespace string `json:"namespace,omitempty"`
+	}{}}
+
+	for _, item := range req {
+		var delErr error
+		if namespaced {
+			if item.Namespace == "" {
+				// If namespaced resource but namespace not provided, record failure
+				delErr = fmt.Errorf("namespace is required for namespaced resource %s", resourceKind)
+			} else {
+				delErr = dynamicClient.Resource(gvr).Namespace(item.Namespace).Delete(c.Request.Context(), item.Name, metav1.DeleteOptions{})
+			}
+		} else {
+			delErr = dynamicClient.Resource(gvr).Delete(c.Request.Context(), item.Name, metav1.DeleteOptions{})
+		}
+
+		if delErr != nil {
+			h.logger.WithError(delErr).WithFields(map[string]interface{}{
+				"resource":    resourceKind,
+				"name":        item.Name,
+				"namespace":   item.Namespace,
+				"group":       gvr.Group,
+				"version":     gvr.Version,
+				"gvrResource": gvr.Resource,
+			}).Error("Failed to delete resource")
+
+			resp.Failures = append(resp.Failures, struct {
+				Name      string `json:"name"`
+				Message   string `json:"message"`
+				Namespace string `json:"namespace,omitempty"`
+			}{Name: item.Name, Message: delErr.Error(), Namespace: item.Namespace})
+		}
+	}
+
+	// Always return 200 with summary of failures for frontend to handle partial successes
+	c.JSON(http.StatusOK, resp)
+}
+
+// CheckPermission checks whether the current user can perform a verb on a resource (optionally in a namespace)
+func (h *ResourcesHandler) CheckPermission(c *gin.Context) {
+	client, _, err := h.getClientAndConfig(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	resourceKind := c.Query("resourcekind")
+	verb := c.DefaultQuery("verb", "delete")
+	namespace := c.Query("namespace")
+
+	var gvr schema.GroupVersionResource
+	if resourceKind == "customresources" {
+		group := c.Query("group")
+		resource := c.Query("resource")
+		if group == "" || resource == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "group and resource are required for customresources permission check"})
+			return
+		}
+		gvr = schema.GroupVersionResource{Group: group, Resource: resource}
+	} else {
+		mapping, ok := resourceMapping[resourceKind]
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("unsupported resource kind: %s", resourceKind)})
+			return
+		}
+		gvr = mapping.GVR
+	}
+
+	accessReview := &authorizationv1.SelfSubjectAccessReview{
+		Spec: authorizationv1.SelfSubjectAccessReviewSpec{
+			ResourceAttributes: &authorizationv1.ResourceAttributes{
+				Group:     gvr.Group,
+				Resource:  gvr.Resource,
+				Verb:      verb,
+				Namespace: namespace,
+			},
+		},
+	}
+
+	result, err := client.AuthorizationV1().SelfSubjectAccessReviews().Create(c.Request.Context(), accessReview, metav1.CreateOptions{})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to check permissions: %v", err)})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"allowed":   result.Status.Allowed,
+		"reason":    result.Status.Reason,
+		"group":     gvr.Group,
+		"resource":  gvr.Resource,
+		"verb":      verb,
+		"namespace": namespace,
+	})
 }
 
 // sendSSEResponse sends a Server-Sent Events response with real-time updates
