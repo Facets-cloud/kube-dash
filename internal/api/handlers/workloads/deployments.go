@@ -39,6 +39,47 @@ func NewDeploymentsHandler(store *storage.KubeConfigStore, clientFactory *k8s.Cl
 	}
 }
 
+// ScaleDeployment updates the replicas of a Deployment via the scale subresource
+func (h *DeploymentsHandler) ScaleDeployment(c *gin.Context) {
+	client, err := h.getClientAndConfig(c)
+	if err != nil {
+		h.logger.WithError(err).Error("Failed to get client for scaling deployment")
+		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error(), "code": http.StatusBadRequest})
+		return
+	}
+
+	name := c.Param("name")
+	namespace := c.Query("namespace")
+	if namespace == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "namespace parameter is required", "code": http.StatusBadRequest})
+		return
+	}
+
+	var body struct {
+		Replicas int32 `json:"replicas"`
+	}
+	if err := c.BindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid request body", "code": http.StatusBadRequest})
+		return
+	}
+
+	scale, err := client.AppsV1().Deployments(namespace).GetScale(c.Request.Context(), name, metav1.GetOptions{})
+	if err != nil {
+		h.logger.WithError(err).WithField("deployment", name).WithField("namespace", namespace).Error("Failed to get deployment scale")
+		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error(), "code": http.StatusBadRequest})
+		return
+	}
+
+	scale.Spec.Replicas = body.Replicas
+	if _, err := client.AppsV1().Deployments(namespace).UpdateScale(c.Request.Context(), name, scale, metav1.UpdateOptions{}); err != nil {
+		h.logger.WithError(err).WithField("deployment", name).WithField("namespace", namespace).Error("Failed to update deployment scale")
+		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error(), "code": http.StatusBadRequest})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Deployment Scaled"})
+}
+
 // getClientAndConfig gets the Kubernetes client and config for the given config ID and cluster
 func (h *DeploymentsHandler) getClientAndConfig(c *gin.Context) (*kubernetes.Clientset, error) {
 	configID := c.Query("config")

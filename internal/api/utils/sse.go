@@ -148,6 +148,9 @@ func (h *SSEHandler) SendSSEResponseWithUpdates(c *gin.Context, data interface{}
 		updateInterval = 120 * time.Second // 2 minutes for Helm releases list
 	} else if strings.HasPrefix(c.Request.URL.Path, "/api/v1/helmreleases/") && !strings.Contains(c.Request.URL.Path, "/history") {
 		updateInterval = 180 * time.Second // 3 minutes for Helm release details
+	} else if strings.HasSuffix(c.Request.URL.Path, "/pods") {
+		// Pod reference streams (e.g., deployments/:ns/:name/pods) should refresh frequently
+		updateInterval = 2 * time.Second
 	}
 
 	// Set up periodic updates with optimized frequency
@@ -192,6 +195,9 @@ func (h *SSEHandler) SendSSEResponseWithUpdates(c *gin.Context, data interface{}
 					timeout = 60 * time.Second // 60 seconds for Helm releases list
 				} else if strings.HasPrefix(c.Request.URL.Path, "/api/v1/helmreleases/") && !strings.Contains(c.Request.URL.Path, "/history") {
 					timeout = 90 * time.Second // 90 seconds for Helm release details
+				} else if strings.HasSuffix(c.Request.URL.Path, "/pods") {
+					// Keep tight timeout for frequent pod streams
+					timeout = 15 * time.Second
 				}
 
 				select {

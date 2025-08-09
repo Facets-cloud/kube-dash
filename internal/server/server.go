@@ -296,6 +296,9 @@ func (s *Server) setupRoutes() {
 		api.GET("/app/config/validate-all", s.kubeHandler.ValidateAllKubeconfigs)
 		api.DELETE("/app/config/kubeconfigs/:id", s.kubeHandler.DeleteKubeconfig)
 
+		// Apply Kubernetes resources from YAML
+		api.POST("/app/apply", s.baseResourcesHandler.ApplyResources)
+
 		// Kubernetes Resources - Cluster-scoped resources (SSE)
 		api.GET("/namespaces", s.namespacesHandler.GetNamespacesSSE)
 		api.GET("/namespaces/:name", s.namespacesHandler.GetNamespace)
@@ -400,6 +403,7 @@ func (s *Server) setupRoutes() {
 		// Workload SSE endpoints
 		api.GET("/pods", s.podsHandler.GetPodsSSE)
 		api.GET("/deployments", s.deploymentsHandler.GetDeploymentsSSE)
+		api.POST("/deployments/:name/scale", s.deploymentsHandler.ScaleDeployment)
 		api.GET("/daemonsets", s.daemonSetsHandler.GetDaemonSetsSSE)
 		api.GET("/statefulsets", s.statefulSetsHandler.GetStatefulSetsSSE)
 		api.GET("/replicasets", s.replicaSetsHandler.GetReplicaSetsSSE)

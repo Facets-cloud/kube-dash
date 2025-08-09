@@ -1,5 +1,6 @@
 import { createEventStreamQueryObject, getEventStreamUrl, getSystemTheme } from '@/utils';
 import { memo, useCallback, useEffect, useState } from 'react';
+import type { editor as MonacoEditor } from 'monaco-editor';
 import { resetUpdateYaml, updateYaml } from '@/data/Yaml/YamlUpdateSlice';
 import { useAppDispatch, useAppSelector } from '@/redux/hooks';
 
@@ -51,7 +52,17 @@ const YamlEditor = memo(function ({ instanceType, name, namespace, clusterName, 
     setValue(yamlData);
   }, [yamlData, loading]);
 
+  const [hasYamlErrors, setHasYamlErrors] = useState(false);
+
+  const onValidate = useCallback((markers: MonacoEditor.IMarker[]) => {
+    setHasYamlErrors((markers || []).length > 0);
+  }, []);
+
   const yamlUpdate = () => {
+    if (hasYamlErrors) {
+      toast.error('Invalid YAML', { description: 'Please fix YAML errors before saving.' });
+      return;
+    }
     dispatch(updateYaml({
       data: value,
       queryParams
@@ -66,9 +77,15 @@ const YamlEditor = memo(function ({ instanceType, name, namespace, clusterName, 
       dispatch(resetUpdateYaml());
       setYamlUpdated(false);
     } else if (error) {
-      toast.error("Failure", {
-        description: error.message,
-      });
+      const anyErr: any = error as any;
+      let description = anyErr?.message || 'Save failed';
+      if (Array.isArray(anyErr?.details) && anyErr.details.length) {
+        const first = anyErr.details[0];
+        if (first?.message) {
+          description = first.message;
+        }
+      }
+      toast.error("Failure", { description });
       dispatch(resetUpdateYaml());
       setYamlUpdated(false);
     }
@@ -132,6 +149,7 @@ const YamlEditor = memo(function ({ instanceType, name, namespace, clusterName, 
               value={value}
               language="yaml"
               onChange={onChange}
+              onValidate={onValidate}
               className='border rounded-lg h-screen'
               theme={getSystemTheme()}
             />

@@ -76,27 +76,33 @@ func (h *ResourceReferencesHandler) GetDeploymentPods(c *gin.Context) {
 		return
 	}
 
-	// Get pods using the deployment's selector
+	// Prepare initial data and periodic updater
 	selector := metav1.FormatLabelSelector(deployment.Spec.Selector)
-	podList, err := client.CoreV1().Pods(namespace).List(c.Request.Context(), metav1.ListOptions{
-		LabelSelector: selector,
-	})
+	fetchPods := func() (interface{}, error) {
+		podList, err := client.CoreV1().Pods(namespace).List(c.Request.Context(), metav1.ListOptions{
+			LabelSelector: selector,
+		})
+		if err != nil {
+			return nil, err
+		}
+		configID := c.Query("config")
+		clusterName := c.Query("cluster")
+		var response []types.PodListResponse
+		for _, pod := range podList.Items {
+			response = append(response, transformers.TransformPodToResponse(&pod, configID, clusterName))
+		}
+		return response, nil
+	}
+
+	initialData, err := fetchPods()
 	if err != nil {
 		h.logger.WithError(err).WithField("deployment", name).WithField("namespace", namespace).Error("Failed to get deployment pods")
 		h.sseHandler.SendSSEError(c, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	// Transform pods to frontend-expected format
-	configID := c.Query("config")
-	clusterName := c.Query("cluster")
-	var response []types.PodListResponse
-	for _, pod := range podList.Items {
-		response = append(response, transformers.TransformPodToResponse(&pod, configID, clusterName))
-	}
-
-	// Always send SSE format for detail endpoints since they're used by EventSource
-	h.sseHandler.SendSSEResponse(c, response)
+	// Send SSE response with periodic updates so UI reflects scale changes
+	h.sseHandler.SendSSEResponseWithUpdates(c, initialData, fetchPods)
 }
 
 // GetDaemonSetPods returns pods for a specific daemonset
@@ -119,27 +125,31 @@ func (h *ResourceReferencesHandler) GetDaemonSetPods(c *gin.Context) {
 		return
 	}
 
-	// Get pods using the daemonset's selector
 	selector := metav1.FormatLabelSelector(daemonSet.Spec.Selector)
-	podList, err := client.CoreV1().Pods(namespace).List(c.Request.Context(), metav1.ListOptions{
-		LabelSelector: selector,
-	})
+	fetchPods := func() (interface{}, error) {
+		podList, err := client.CoreV1().Pods(namespace).List(c.Request.Context(), metav1.ListOptions{
+			LabelSelector: selector,
+		})
+		if err != nil {
+			return nil, err
+		}
+		configID := c.Query("config")
+		clusterName := c.Query("cluster")
+		var response []types.PodListResponse
+		for _, pod := range podList.Items {
+			response = append(response, transformers.TransformPodToResponse(&pod, configID, clusterName))
+		}
+		return response, nil
+	}
+
+	initialData, err := fetchPods()
 	if err != nil {
 		h.logger.WithError(err).WithField("daemonset", name).WithField("namespace", namespace).Error("Failed to get daemonset pods")
 		h.sseHandler.SendSSEError(c, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	// Transform pods to frontend-expected format
-	configID := c.Query("config")
-	clusterName := c.Query("cluster")
-	var response []types.PodListResponse
-	for _, pod := range podList.Items {
-		response = append(response, transformers.TransformPodToResponse(&pod, configID, clusterName))
-	}
-
-	// Always send SSE format for detail endpoints since they're used by EventSource
-	h.sseHandler.SendSSEResponse(c, response)
+	h.sseHandler.SendSSEResponseWithUpdates(c, initialData, fetchPods)
 }
 
 // GetStatefulSetPods returns pods for a specific statefulset
@@ -162,27 +172,31 @@ func (h *ResourceReferencesHandler) GetStatefulSetPods(c *gin.Context) {
 		return
 	}
 
-	// Get pods using the statefulset's selector
 	selector := metav1.FormatLabelSelector(statefulSet.Spec.Selector)
-	podList, err := client.CoreV1().Pods(namespace).List(c.Request.Context(), metav1.ListOptions{
-		LabelSelector: selector,
-	})
+	fetchPods := func() (interface{}, error) {
+		podList, err := client.CoreV1().Pods(namespace).List(c.Request.Context(), metav1.ListOptions{
+			LabelSelector: selector,
+		})
+		if err != nil {
+			return nil, err
+		}
+		configID := c.Query("config")
+		clusterName := c.Query("cluster")
+		var response []types.PodListResponse
+		for _, pod := range podList.Items {
+			response = append(response, transformers.TransformPodToResponse(&pod, configID, clusterName))
+		}
+		return response, nil
+	}
+
+	initialData, err := fetchPods()
 	if err != nil {
 		h.logger.WithError(err).WithField("statefulset", name).WithField("namespace", namespace).Error("Failed to get statefulset pods")
 		h.sseHandler.SendSSEError(c, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	// Transform pods to frontend-expected format
-	configID := c.Query("config")
-	clusterName := c.Query("cluster")
-	var response []types.PodListResponse
-	for _, pod := range podList.Items {
-		response = append(response, transformers.TransformPodToResponse(&pod, configID, clusterName))
-	}
-
-	// Always send SSE format for detail endpoints since they're used by EventSource
-	h.sseHandler.SendSSEResponse(c, response)
+	h.sseHandler.SendSSEResponseWithUpdates(c, initialData, fetchPods)
 }
 
 // GetReplicaSetPods returns pods for a specific replicaset
@@ -205,27 +219,31 @@ func (h *ResourceReferencesHandler) GetReplicaSetPods(c *gin.Context) {
 		return
 	}
 
-	// Get pods using the replicaset's selector
 	selector := metav1.FormatLabelSelector(replicaSet.Spec.Selector)
-	podList, err := client.CoreV1().Pods(namespace).List(c.Request.Context(), metav1.ListOptions{
-		LabelSelector: selector,
-	})
+	fetchPods := func() (interface{}, error) {
+		podList, err := client.CoreV1().Pods(namespace).List(c.Request.Context(), metav1.ListOptions{
+			LabelSelector: selector,
+		})
+		if err != nil {
+			return nil, err
+		}
+		configID := c.Query("config")
+		clusterName := c.Query("cluster")
+		var response []types.PodListResponse
+		for _, pod := range podList.Items {
+			response = append(response, transformers.TransformPodToResponse(&pod, configID, clusterName))
+		}
+		return response, nil
+	}
+
+	initialData, err := fetchPods()
 	if err != nil {
 		h.logger.WithError(err).WithField("replicaset", name).WithField("namespace", namespace).Error("Failed to get replicaset pods")
 		h.sseHandler.SendSSEError(c, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	// Transform pods to frontend-expected format
-	configID := c.Query("config")
-	clusterName := c.Query("cluster")
-	var response []types.PodListResponse
-	for _, pod := range podList.Items {
-		response = append(response, transformers.TransformPodToResponse(&pod, configID, clusterName))
-	}
-
-	// Always send SSE format for detail endpoints since they're used by EventSource
-	h.sseHandler.SendSSEResponse(c, response)
+	h.sseHandler.SendSSEResponseWithUpdates(c, initialData, fetchPods)
 }
 
 // GetJobPods returns pods for a specific job
@@ -248,27 +266,31 @@ func (h *ResourceReferencesHandler) GetJobPods(c *gin.Context) {
 		return
 	}
 
-	// Get pods using the job's selector
 	selector := metav1.FormatLabelSelector(job.Spec.Selector)
-	podList, err := client.CoreV1().Pods(namespace).List(c.Request.Context(), metav1.ListOptions{
-		LabelSelector: selector,
-	})
+	fetchPods := func() (interface{}, error) {
+		podList, err := client.CoreV1().Pods(namespace).List(c.Request.Context(), metav1.ListOptions{
+			LabelSelector: selector,
+		})
+		if err != nil {
+			return nil, err
+		}
+		configID := c.Query("config")
+		clusterName := c.Query("cluster")
+		var response []types.PodListResponse
+		for _, pod := range podList.Items {
+			response = append(response, transformers.TransformPodToResponse(&pod, configID, clusterName))
+		}
+		return response, nil
+	}
+
+	initialData, err := fetchPods()
 	if err != nil {
 		h.logger.WithError(err).WithField("job", name).WithField("namespace", namespace).Error("Failed to get job pods")
 		h.sseHandler.SendSSEError(c, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	// Transform pods to frontend-expected format
-	configID := c.Query("config")
-	clusterName := c.Query("cluster")
-	var response []types.PodListResponse
-	for _, pod := range podList.Items {
-		response = append(response, transformers.TransformPodToResponse(&pod, configID, clusterName))
-	}
-
-	// Always send SSE format for detail endpoints since they're used by EventSource
-	h.sseHandler.SendSSEResponse(c, response)
+	h.sseHandler.SendSSEResponseWithUpdates(c, initialData, fetchPods)
 }
 
 // GetCronJobJobs returns jobs for a specific cronjob

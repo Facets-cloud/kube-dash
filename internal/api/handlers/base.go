@@ -275,6 +275,7 @@ func (h *ResourcesHandler) CheckPermission(c *gin.Context) {
 	resourceKind := c.Query("resourcekind")
 	verb := c.DefaultQuery("verb", "delete")
 	namespace := c.Query("namespace")
+	subresource := c.Query("subresource")
 
 	var gvr schema.GroupVersionResource
 	if resourceKind == "customresources" {
@@ -301,6 +302,12 @@ func (h *ResourcesHandler) CheckPermission(c *gin.Context) {
 				Resource:  gvr.Resource,
 				Verb:      verb,
 				Namespace: namespace,
+				Subresource: func() string {
+					if subresource != "" {
+						return subresource
+					}
+					return ""
+				}(),
 			},
 		},
 	}
