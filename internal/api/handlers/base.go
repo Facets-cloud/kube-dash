@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/Facets-cloud/kube-dash/internal/k8s"
@@ -325,6 +326,89 @@ func (h *ResourcesHandler) CheckPermission(c *gin.Context) {
 		"resource":  gvr.Resource,
 		"verb":      verb,
 		"namespace": namespace,
+	})
+}
+
+// CheckYamlEditPermission checks if the user has permissions to edit YAML for a specific resource
+func (h *ResourcesHandler) CheckYamlEditPermission(c *gin.Context) {
+	client, _, err := h.getClientAndConfig(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	resourceKind := c.Query("resourcekind")
+	namespace := c.Query("namespace")
+	resourceName := c.Query("resourcename")
+
+	var gvr schema.GroupVersionResource
+	if resourceKind == "customresources" {
+		group := c.Query("group")
+		resource := c.Query("resource")
+		if group == "" || resource == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "group and resource are required for customresources permission check"})
+			return
+		}
+		gvr = schema.GroupVersionResource{Group: group, Resource: resource}
+	} else {
+		mapping, ok := resourceMapping[resourceKind]
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("unsupported resource kind: %s", resourceKind)})
+			return
+		}
+		gvr = mapping.GVR
+	}
+
+	// Check for both update and patch permissions (required for YAML editing)
+	verbs := []string{"update", "patch"}
+	permissions := make(map[string]bool)
+
+	for _, verb := range verbs {
+		accessReview := &authorizationv1.SelfSubjectAccessReview{
+			Spec: authorizationv1.SelfSubjectAccessReviewSpec{
+				ResourceAttributes: &authorizationv1.ResourceAttributes{
+					Group:     gvr.Group,
+					Resource:  gvr.Resource,
+					Verb:      verb,
+					Namespace: namespace,
+					Name:      resourceName,
+				},
+			},
+		}
+
+		result, err := client.AuthorizationV1().SelfSubjectAccessReviews().Create(c.Request.Context(), accessReview, metav1.CreateOptions{})
+		if err != nil {
+			h.logger.WithError(err).Errorf("Failed to check %s permission for YAML editing", verb)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to check %s permissions: %v", verb, err)})
+			return
+		}
+
+		permissions[verb] = result.Status.Allowed
+	}
+
+	// User needs both update and patch permissions to edit YAML
+	canEdit := permissions["update"] && permissions["patch"]
+
+	c.JSON(http.StatusOK, gin.H{
+		"allowed":     canEdit,
+		"permissions": permissions,
+		"reason": func() string {
+			if canEdit {
+				return "User has required permissions for YAML editing"
+			}
+			reasons := []string{}
+			if !permissions["update"] {
+				reasons = append(reasons, "update permission denied")
+			}
+			if !permissions["patch"] {
+				reasons = append(reasons, "patch permission denied")
+			}
+			return strings.Join(reasons, ", ")
+		}(),
+		"group":     gvr.Group,
+		"resource":  gvr.Resource,
+		"namespace": namespace,
+		"name":      resourceName,
 	})
 }
 

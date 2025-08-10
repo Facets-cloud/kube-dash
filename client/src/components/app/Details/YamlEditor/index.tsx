@@ -5,13 +5,21 @@ import { resetUpdateYaml, updateYaml } from '@/data/Yaml/YamlUpdateSlice';
 import { useAppDispatch, useAppSelector } from '@/redux/hooks';
 
 import { Button } from '@/components/ui/button';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import Editor from './MonacoWrapper';
 import { Loader } from '../../Loader';
-import { SaveIcon } from "lucide-react";
+import { SaveIcon, CheckCircleIcon, AlertCircleIcon } from "lucide-react";
 import { toast } from "sonner";
 import { updateYamlDetails } from '@/data/Yaml/YamlSlice';
 import { useEventSource } from '../../Common/Hooks/EventSource';
 import { useNavigate } from '@tanstack/react-router';
+import { checkYamlEditPermission, getPermissionDenialMessage, YamlEditPermissionResult } from '@/utils/yamlPermissions';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 type EditorProps = {
   name: string;
@@ -52,17 +60,119 @@ const YamlEditor = memo(function ({ instanceType, name, namespace, clusterName, 
     setValue(yamlData);
   }, [yamlData, loading]);
 
+  // Check permissions when component mounts or when resource changes
+  useEffect(() => {
+    const checkPermissions = async () => {
+      if (!configName || !clusterName || !name) return;
+      
+      setCheckingPermission(true);
+      try {
+        const result = await checkYamlEditPermission({
+          config: configName,
+          cluster: clusterName,
+          resourcekind: instanceType,
+          namespace,
+          resourcename: name,
+          // Add custom resource parameters if needed
+          ...(instanceType.includes('customresources') && extraQuery ? {
+            group: new URLSearchParams(extraQuery).get('group') || '',
+            resource: new URLSearchParams(extraQuery).get('resource') || '',
+          } : {}),
+        });
+        setPermissionResult(result);
+      } catch (error) {
+        console.error('Failed to check YAML edit permissions:', error);
+        setPermissionResult({
+          allowed: false,
+          permissions: { update: false, patch: false },
+          reason: 'Failed to check permissions',
+          group: '',
+          resource: instanceType,
+          namespace,
+          name,
+        });
+      } finally {
+        setCheckingPermission(false);
+      }
+    };
+
+    checkPermissions();
+  }, [configName, clusterName, instanceType, namespace, name, extraQuery]);
+
   const [hasYamlErrors, setHasYamlErrors] = useState(false);
+  const [yamlValidationErrors, setYamlValidationErrors] = useState<string[]>([]);
+  const [permissionResult, setPermissionResult] = useState<YamlEditPermissionResult | null>(null);
+  const [checkingPermission, setCheckingPermission] = useState<boolean>(false);
 
   const onValidate = useCallback((markers: MonacoEditor.IMarker[]) => {
     setHasYamlErrors((markers || []).length > 0);
+    
+    // Extract validation errors for display
+    const errors = markers.map(marker => `${marker.message} (line ${marker.startLineNumber})`);
+    setYamlValidationErrors(errors);
+  }, []);
+
+  // Enhanced YAML validation
+  const validateYamlContent = useCallback((yamlContent: string): boolean => {
+    try {
+      // Basic YAML syntax validation
+      const lines = yamlContent.split('\n');
+      let hasApiVersion = false;
+      let hasKind = false;
+      let hasMetadata = false;
+      let hasName = false;
+
+      for (const line of lines) {
+        const trimmedLine = line.trim();
+        if (trimmedLine.startsWith('apiVersion:')) {
+          hasApiVersion = true;
+        }
+        if (trimmedLine.startsWith('kind:')) {
+          hasKind = true;
+        }
+        if (trimmedLine.startsWith('metadata:')) {
+          hasMetadata = true;
+        }
+        if (trimmedLine.startsWith('name:')) {
+          hasName = true;
+        }
+      }
+
+      const missingFields: string[] = [];
+      if (!hasApiVersion) missingFields.push('apiVersion');
+      if (!hasKind) missingFields.push('kind');
+      if (!hasMetadata) missingFields.push('metadata');
+      if (!hasName) missingFields.push('name');
+
+      if (missingFields.length > 0) {
+        setYamlValidationErrors([`Missing required fields: ${missingFields.join(', ')}`]);
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      setYamlValidationErrors(['Invalid YAML syntax']);
+      return false;
+    }
   }, []);
 
   const yamlUpdate = () => {
+    if (!permissionResult?.allowed) {
+      const message = getPermissionDenialMessage(permissionResult!);
+      toast.error('Permission Denied', { description: message });
+      return;
+    }
+
     if (hasYamlErrors) {
       toast.error('Invalid YAML', { description: 'Please fix YAML errors before saving.' });
       return;
     }
+
+    if (!validateYamlContent(value)) {
+      toast.error('Invalid YAML', { description: 'Please fix YAML validation errors before applying.' });
+      return;
+    }
+
     dispatch(updateYaml({
       data: value,
       queryParams
@@ -130,21 +240,100 @@ const YamlEditor = memo(function ({ instanceType, name, namespace, clusterName, 
             </div>
           </div>
           : <div className='relative'>
-            {
-              yamlUpdated &&
-              <Button
-                variant="default"
-                size="icon"
-                className='gap-0 absolute bottom-32 right-0 mt-1 mr-5 rounded z-10 border w-16'
-                onClick={yamlUpdate}
-              > {
-                  yamlUpdateLoading ?
-                    <Loader className='w-5 h-5 text-gray-200 animate-spin dark:text-gray-600 fill-blue-600' /> :
-                    <SaveIcon className="h-4 w-4 mr-1" />
-                }
-                <span className='text-xs'>Save</span>
-              </Button>
-            }
+            {/* YAML Validation Status */}
+            {yamlUpdated && (
+              <div className="absolute top-4 right-4 z-20">
+                {hasYamlErrors ? (
+                  <div className="flex items-center gap-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg px-3 py-2">
+                    <AlertCircleIcon className="h-4 w-4 text-red-600 dark:text-red-400" />
+                    <span className="text-sm text-red-700 dark:text-red-300">YAML has errors</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg px-3 py-2">
+                    <CheckCircleIcon className="h-4 w-4 text-green-600 dark:text-green-400" />
+                    <span className="text-sm text-green-700 dark:text-green-300">YAML is valid</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Remove the permission status badge - no longer showing "Can Edit" or "No Permission" */}
+
+            {/* Action Buttons */}
+            {yamlUpdated && (
+              <div className="absolute bottom-32 right-0 mt-1 mr-5 rounded z-10 flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className='gap-2 px-4 py-2'
+                  onClick={() => {
+                    setValue(yamlData);
+                    setYamlUpdated(false);
+                    setYamlValidationErrors([]);
+                  }}
+                  disabled={yamlUpdateLoading}
+                >
+                  <span className='text-xs'>Reset</span>
+                </Button>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="default"
+                        size="sm"
+                        className='gap-2 px-4 py-2'
+                        onClick={yamlUpdate}
+                        disabled={hasYamlErrors || yamlUpdateLoading || !permissionResult?.allowed}
+                      >
+                        {yamlUpdateLoading ? (
+                          <Loader className='w-4 h-4 text-gray-200 animate-spin dark:text-gray-600 fill-blue-600' />
+                        ) : (
+                          <SaveIcon className="h-4 w-4" />
+                        )}
+                        <span className='text-xs'>Apply</span>
+                      </Button>
+                    </TooltipTrigger>
+                    {!permissionResult?.allowed && (
+                      <TooltipContent>
+                        <p>You don't have permissions to edit this resource</p>
+                      </TooltipContent>
+                    )}
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+            )}
+
+            {/* YAML Validation Errors */}
+            {yamlValidationErrors.length > 0 && (
+              <div className="absolute top-16 right-4 z-20 max-w-md">
+                <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <AlertCircleIcon className="h-4 w-4 text-red-600 dark:text-red-400" />
+                    <span className="text-sm font-medium text-red-700 dark:text-red-300">Validation Errors</span>
+                  </div>
+                  <ul className="text-xs text-red-600 dark:text-red-400 space-y-1">
+                    {yamlValidationErrors.map((error, index) => (
+                      <li key={index}>• {error}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )}
+
+            {/* Permission Alert */}
+            {permissionResult && !checkingPermission && !permissionResult.allowed && (
+              <Alert variant="destructive" className="m-4">
+                <AlertCircleIcon className="h-4 w-4" />
+                <AlertTitle>Permission Denied</AlertTitle>
+                <AlertDescription>
+                  <p className="text-sm">{getPermissionDenialMessage(permissionResult)}</p>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Contact your cluster administrator if you believe this is an error.
+                  </p>
+                </AlertDescription>
+              </Alert>
+            )}
+
             <Editor
               value={value}
               language="yaml"
@@ -152,9 +341,25 @@ const YamlEditor = memo(function ({ instanceType, name, namespace, clusterName, 
               onValidate={onValidate}
               className='border rounded-lg h-screen'
               theme={getSystemTheme()}
+              options={{
+                minimap: { enabled: false },
+                automaticLayout: true,
+                fontSize: 14,
+                lineNumbers: 'on',
+                wordWrap: 'on',
+                folding: true,
+                scrollBeyondLastLine: true,
+                scrollbar: {
+                  vertical: 'visible',
+                  horizontal: 'visible',
+                  verticalScrollbarSize: 14,
+                  horizontalScrollbarSize: 14,
+                },
+                overviewRulerBorder: false,
+                overviewRulerLanes: 0,
+              }}
             />
           </div>
-
       }
     </>
   );

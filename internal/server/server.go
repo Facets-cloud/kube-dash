@@ -319,6 +319,8 @@ func (s *Server) setupRoutes() {
 		api.DELETE("/:resourcekind", s.baseResourcesHandler.DeleteResources)
 		// Permission check endpoint for actions like delete
 		api.GET("/permissions/check", s.baseResourcesHandler.CheckPermission)
+		// Permission check endpoint for YAML editing
+		api.GET("/permissions/yaml-edit", s.baseResourcesHandler.CheckYamlEditPermission)
 
 		// ConfigMaps endpoints
 		api.GET("/configmaps", s.configMapsHandler.GetConfigMapsSSE)

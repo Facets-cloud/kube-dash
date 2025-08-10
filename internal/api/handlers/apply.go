@@ -90,10 +90,32 @@ func (h *ResourcesHandler) ApplyResources(c *gin.Context) {
 
 		obj := &unstructured.Unstructured{Object: raw}
 		gvk := obj.GroupVersionKind()
+
+		// Enhanced validation for required fields
 		if gvk.Empty() || gvk.Kind == "" || gvk.Version == "" {
+			missingFields := []string{}
+			if gvk.Kind == "" {
+				missingFields = append(missingFields, "kind")
+			}
+			if gvk.Version == "" {
+				missingFields = append(missingFields, "apiVersion")
+			}
+
 			failures = append(failures, failure{
 				Name:    obj.GetName(),
-				Message: "missing apiVersion or kind in document",
+				Message: fmt.Sprintf("missing required fields: %s", strings.Join(missingFields, ", ")),
+			})
+			continue
+		}
+
+		// Validate metadata and name
+		if obj.GetName() == "" {
+			failures = append(failures, failure{
+				Name:    "unknown",
+				Kind:    gvk.Kind,
+				Group:   gvk.Group,
+				Version: gvk.Version,
+				Message: "missing required field: metadata.name",
 			})
 			continue
 		}

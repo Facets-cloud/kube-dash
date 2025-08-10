@@ -1,7 +1,6 @@
 package cluster
 
 import (
-	"encoding/base64"
 	"fmt"
 	"net/http"
 
@@ -11,7 +10,6 @@ import (
 	"github.com/Facets-cloud/kube-dash/pkg/logger"
 
 	"github.com/gin-gonic/gin"
-	"gopkg.in/yaml.v3"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
@@ -22,6 +20,7 @@ type LeasesHandler struct {
 	clientFactory *k8s.ClientFactory
 	logger        *logger.Logger
 	sseHandler    *utils.SSEHandler
+	yamlHandler   *utils.YAMLHandler
 	eventsHandler *utils.EventsHandler
 }
 
@@ -32,6 +31,7 @@ func NewLeasesHandler(store *storage.KubeConfigStore, clientFactory *k8s.ClientF
 		clientFactory: clientFactory,
 		logger:        log,
 		sseHandler:    utils.NewSSEHandler(log),
+		yamlHandler:   utils.NewYAMLHandler(log),
 		eventsHandler: utils.NewEventsHandler(log),
 	}
 }
@@ -169,26 +169,7 @@ func (h *LeasesHandler) GetLeaseYAML(c *gin.Context) {
 		return
 	}
 
-	// Convert to YAML
-	yamlData, err := yaml.Marshal(lease)
-	if err != nil {
-		h.logger.WithError(err).Error("Failed to marshal lease to YAML")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to convert to YAML"})
-		return
-	}
-
-	// Check if this is an SSE request (EventSource expects SSE format)
-	acceptHeader := c.GetHeader("Accept")
-	if acceptHeader == "text/event-stream" {
-		// For EventSource, send the YAML data as base64 encoded string
-		encodedYAML := base64.StdEncoding.EncodeToString(yamlData)
-		h.sseHandler.SendSSEResponse(c, gin.H{"data": encodedYAML})
-		return
-	}
-
-	// Return as base64 encoded string to match frontend expectations
-	encodedYAML := base64.StdEncoding.EncodeToString(yamlData)
-	c.JSON(http.StatusOK, gin.H{"data": encodedYAML})
+	h.yamlHandler.SendYAMLResponse(c, lease, name)
 }
 
 // GetLeaseEvents returns events for a specific lease

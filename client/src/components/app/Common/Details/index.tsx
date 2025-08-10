@@ -18,7 +18,7 @@ import TableDelete from "../../Table/TableDelete";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 
-import { YamlEditor } from "../../Details/YamlEditor";
+import { EnhancedYamlEditor } from "../../Details/YamlEditor/EnhancedYamlEditor";
 import { clearLogs } from "@/data/Workloads/Pods/PodLogsSlice";
 import { kwDetails, appRoute } from "@/routes";
 import { resetYamlDetails } from "@/data/Yaml/YamlSlice";
@@ -208,7 +208,7 @@ const KwDetails = () => {
                   ) : (
                     <>
                       <TabsContent value='yaml'>
-                        <YamlEditor
+                        <EnhancedYamlEditor
                           name={resourcename}
                           configName={config}
                           clusterName={cluster}

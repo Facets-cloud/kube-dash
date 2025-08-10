@@ -1,7 +1,6 @@
 package cluster
 
 import (
-	"encoding/base64"
 	"fmt"
 	"net/http"
 	"time"
@@ -14,7 +13,6 @@ import (
 	"github.com/Facets-cloud/kube-dash/pkg/logger"
 
 	"github.com/gin-gonic/gin"
-	"gopkg.in/yaml.v3"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -59,6 +57,7 @@ type NodesHandler struct {
 	clientFactory *k8s.ClientFactory
 	logger        *logger.Logger
 	sseHandler    *utils.SSEHandler
+	yamlHandler   *utils.YAMLHandler
 	eventsHandler *utils.EventsHandler
 }
 
@@ -69,6 +68,7 @@ func NewNodesHandler(store *storage.KubeConfigStore, clientFactory *k8s.ClientFa
 		clientFactory: clientFactory,
 		logger:        log,
 		sseHandler:    utils.NewSSEHandler(log),
+		yamlHandler:   utils.NewYAMLHandler(log),
 		eventsHandler: utils.NewEventsHandler(log),
 	}
 }
@@ -301,28 +301,7 @@ func (h *NodesHandler) GetNodeYAML(c *gin.Context) {
 		return
 	}
 
-	// Convert to YAML
-	yamlData, err := yaml.Marshal(node)
-	if err != nil {
-		h.logger.WithError(err).Error("Failed to marshal node to YAML")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to convert to YAML"})
-		return
-	}
-
-	// Check if this is an SSE request (EventSource expects SSE format)
-	acceptHeader := c.GetHeader("Accept")
-	h.logger.WithField("acceptHeader", acceptHeader).Info("Accept header received")
-	if acceptHeader == "text/event-stream" {
-		h.logger.Info("Sending SSE response for EventSource")
-		// For EventSource, send the YAML data as base64 encoded string
-		encodedYAML := base64.StdEncoding.EncodeToString(yamlData)
-		h.sseHandler.SendSSEResponse(c, gin.H{"data": encodedYAML})
-		return
-	}
-
-	// Return as base64 encoded string to match frontend expectations
-	encodedYAML := base64.StdEncoding.EncodeToString(yamlData)
-	c.JSON(http.StatusOK, gin.H{"data": encodedYAML})
+	h.yamlHandler.SendYAMLResponse(c, node, name)
 }
 
 // GetNodeEvents returns events for a specific node
