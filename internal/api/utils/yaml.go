@@ -257,6 +257,7 @@ func (h *YAMLHandler) ensureCompleteYAML(resource interface{}) ([]byte, error) {
 
 				// Check for common Kubernetes resource types
 				switch {
+				// Workloads
 				case strings.Contains(resourceType, "HorizontalPodAutoscaler"):
 					gvk = schema.GroupVersionKind{Group: "autoscaling", Version: "v2", Kind: "HorizontalPodAutoscaler"}
 					found = true
@@ -265,12 +266,42 @@ func (h *YAMLHandler) ensureCompleteYAML(resource interface{}) ([]byte, error) {
 					gvk = schema.GroupVersionKind{Group: "apps", Version: "v1", Kind: "Deployment"}
 					found = true
 					h.logger.WithField("gvk", gvk).Info("Inferred GVK from resource type name")
+				case strings.Contains(resourceType, "DaemonSet"):
+					gvk = schema.GroupVersionKind{Group: "apps", Version: "v1", Kind: "DaemonSet"}
+					found = true
+					h.logger.WithField("gvk", gvk).Info("Inferred GVK from resource type name")
+				case strings.Contains(resourceType, "StatefulSet"):
+					gvk = schema.GroupVersionKind{Group: "apps", Version: "v1", Kind: "StatefulSet"}
+					found = true
+					h.logger.WithField("gvk", gvk).Info("Inferred GVK from resource type name")
+				case strings.Contains(resourceType, "ReplicaSet"):
+					gvk = schema.GroupVersionKind{Group: "apps", Version: "v1", Kind: "ReplicaSet"}
+					found = true
+					h.logger.WithField("gvk", gvk).Info("Inferred GVK from resource type name")
 				case strings.Contains(resourceType, "Pod"):
 					gvk = schema.GroupVersionKind{Group: "", Version: "v1", Kind: "Pod"}
 					found = true
 					h.logger.WithField("gvk", gvk).Info("Inferred GVK from resource type name")
+				case strings.Contains(resourceType, "Job"):
+					gvk = schema.GroupVersionKind{Group: "batch", Version: "v1", Kind: "Job"}
+					found = true
+					h.logger.WithField("gvk", gvk).Info("Inferred GVK from resource type name")
+				case strings.Contains(resourceType, "CronJob"):
+					gvk = schema.GroupVersionKind{Group: "batch", Version: "v1", Kind: "CronJob"}
+					found = true
+					h.logger.WithField("gvk", gvk).Info("Inferred GVK from resource type name")
+
+				// Core resources
 				case strings.Contains(resourceType, "Service"):
 					gvk = schema.GroupVersionKind{Group: "", Version: "v1", Kind: "Service"}
+					found = true
+					h.logger.WithField("gvk", gvk).Info("Inferred GVK from resource type name")
+				case strings.Contains(resourceType, "Endpoints"):
+					gvk = schema.GroupVersionKind{Group: "", Version: "v1", Kind: "Endpoints"}
+					found = true
+					h.logger.WithField("gvk", gvk).Info("Inferred GVK from resource type name")
+				case strings.Contains(resourceType, "Ingress"):
+					gvk = schema.GroupVersionKind{Group: "networking.k8s.io", Version: "v1", Kind: "Ingress"}
 					found = true
 					h.logger.WithField("gvk", gvk).Info("Inferred GVK from resource type name")
 				case strings.Contains(resourceType, "ConfigMap"):
@@ -289,6 +320,73 @@ func (h *YAMLHandler) ensureCompleteYAML(resource interface{}) ([]byte, error) {
 					gvk = schema.GroupVersionKind{Group: "", Version: "v1", Kind: "Node"}
 					found = true
 					h.logger.WithField("gvk", gvk).Info("Inferred GVK from resource type name")
+				case strings.Contains(resourceType, "Event"):
+					gvk = schema.GroupVersionKind{Group: "", Version: "v1", Kind: "Event"}
+					found = true
+					h.logger.WithField("gvk", gvk).Info("Inferred GVK from resource type name")
+				case strings.Contains(resourceType, "Lease"):
+					gvk = schema.GroupVersionKind{Group: "coordination.k8s.io", Version: "v1", Kind: "Lease"}
+					found = true
+					h.logger.WithField("gvk", gvk).Info("Inferred GVK from resource type name")
+
+				// Storage
+				case strings.Contains(resourceType, "PersistentVolume"):
+					gvk = schema.GroupVersionKind{Group: "", Version: "v1", Kind: "PersistentVolume"}
+					found = true
+					h.logger.WithField("gvk", gvk).Info("Inferred GVK from resource type name")
+				case strings.Contains(resourceType, "PersistentVolumeClaim"):
+					gvk = schema.GroupVersionKind{Group: "", Version: "v1", Kind: "PersistentVolumeClaim"}
+					found = true
+					h.logger.WithField("gvk", gvk).Info("Inferred GVK from resource type name")
+				case strings.Contains(resourceType, "StorageClass"):
+					gvk = schema.GroupVersionKind{Group: "storage.k8s.io", Version: "v1", Kind: "StorageClass"}
+					found = true
+					h.logger.WithField("gvk", gvk).Info("Inferred GVK from resource type name")
+
+				// Access Control
+				case strings.Contains(resourceType, "Role"):
+					gvk = schema.GroupVersionKind{Group: "rbac.authorization.k8s.io", Version: "v1", Kind: "Role"}
+					found = true
+					h.logger.WithField("gvk", gvk).Info("Inferred GVK from resource type name")
+				case strings.Contains(resourceType, "RoleBinding"):
+					gvk = schema.GroupVersionKind{Group: "rbac.authorization.k8s.io", Version: "v1", Kind: "RoleBinding"}
+					found = true
+					h.logger.WithField("gvk", gvk).Info("Inferred GVK from resource type name")
+				case strings.Contains(resourceType, "ClusterRole"):
+					gvk = schema.GroupVersionKind{Group: "rbac.authorization.k8s.io", Version: "v1", Kind: "ClusterRole"}
+					found = true
+					h.logger.WithField("gvk", gvk).Info("Inferred GVK from resource type name")
+				case strings.Contains(resourceType, "ClusterRoleBinding"):
+					gvk = schema.GroupVersionKind{Group: "rbac.authorization.k8s.io", Version: "v1", Kind: "ClusterRoleBinding"}
+					found = true
+					h.logger.WithField("gvk", gvk).Info("Inferred GVK from resource type name")
+				case strings.Contains(resourceType, "ServiceAccount"):
+					gvk = schema.GroupVersionKind{Group: "", Version: "v1", Kind: "ServiceAccount"}
+					found = true
+					h.logger.WithField("gvk", gvk).Info("Inferred GVK from resource type name")
+
+				// Configuration
+				case strings.Contains(resourceType, "LimitRange"):
+					gvk = schema.GroupVersionKind{Group: "", Version: "v1", Kind: "LimitRange"}
+					found = true
+					h.logger.WithField("gvk", gvk).Info("Inferred GVK from resource type name")
+				case strings.Contains(resourceType, "ResourceQuota"):
+					gvk = schema.GroupVersionKind{Group: "", Version: "v1", Kind: "ResourceQuota"}
+					found = true
+					h.logger.WithField("gvk", gvk).Info("Inferred GVK from resource type name")
+				case strings.Contains(resourceType, "PriorityClass"):
+					gvk = schema.GroupVersionKind{Group: "scheduling.k8s.io", Version: "v1", Kind: "PriorityClass"}
+					found = true
+					h.logger.WithField("gvk", gvk).Info("Inferred GVK from resource type name")
+				case strings.Contains(resourceType, "RuntimeClass"):
+					gvk = schema.GroupVersionKind{Group: "node.k8s.io", Version: "v1", Kind: "RuntimeClass"}
+					found = true
+					h.logger.WithField("gvk", gvk).Info("Inferred GVK from resource type name")
+				case strings.Contains(resourceType, "PodDisruptionBudget"):
+					gvk = schema.GroupVersionKind{Group: "policy", Version: "v1", Kind: "PodDisruptionBudget"}
+					found = true
+					h.logger.WithField("gvk", gvk).Info("Inferred GVK from resource type name")
+
 				default:
 					h.logger.WithField("resource_type", resourceType).Warn("Could not infer GVK from resource type name")
 				}
