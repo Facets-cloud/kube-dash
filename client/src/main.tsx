@@ -20,7 +20,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         richColors
         position="top-right"
         closeButton
-        duration={10000}
+        duration={2000}
         theme={getSystemTheme() === 'light' ? 'light' : 'dark'}
       />
       </Provider>
