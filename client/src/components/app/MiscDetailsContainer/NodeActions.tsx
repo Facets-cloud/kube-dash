@@ -162,7 +162,7 @@ const NodeActions: React.FC<NodeActionsProps> = ({
             <Dialog open={cordonDialogOpen} onOpenChange={setCordonDialogOpen}>
               <DialogTrigger asChild>
                 <Button
-                  variant={isCordoned ? "destructive" : "ghost"}
+                  variant={isCordoned ? "destructive" : "outline"}
                   size="sm"
                   disabled={loading || checkingPermissions || !cordonPermission?.allowed || isCordoned}
                   className="h-8 px-2 gap-1"
@@ -217,7 +217,7 @@ const NodeActions: React.FC<NodeActionsProps> = ({
             <Dialog open={uncordonDialogOpen} onOpenChange={setUncordonDialogOpen}>
               <DialogTrigger asChild>
                 <Button
-                  variant={!isCordoned ? "destructive" : "ghost"}
+                  variant={!isCordoned ? "destructive" : "outline"}
                   size="sm"
                   disabled={loading || checkingPermissions || !uncordonPermission?.allowed || !isCordoned}
                   className="h-8 px-2 gap-1"
@@ -272,10 +272,10 @@ const NodeActions: React.FC<NodeActionsProps> = ({
             <Dialog open={drainDialogOpen} onOpenChange={setDrainDialogOpen}>
               <DialogTrigger asChild>
                 <Button
-                  variant="ghost"
+                  variant="outline"
                   size="sm"
                   disabled={loading || checkingPermissions || !drainPermission?.allowed}
-                  className="h-8 px-2 gap-1 text-destructive hover:text-destructive"
+                  className="h-8 px-2 gap-1 text-destructive hover:text-destructive border-destructive hover:border-destructive"
                 >
                   {loading ? (
                     <Loader2Icon className="h-3 w-3 animate-spin" />
