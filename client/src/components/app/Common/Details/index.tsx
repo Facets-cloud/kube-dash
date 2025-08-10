@@ -11,6 +11,8 @@ import { Overview } from "../../Details/Overview";
 import { PODS_ENDPOINT, HELM_RELEASES_ENDPOINT } from "@/constants";
 import { PodLogs } from "../../MiscDetailsContainer";
 import { PodExec } from "../../MiscDetailsContainer/PodExec";
+import { PortForwardDialog } from "../../MiscDetailsContainer/PortForward/PortForwardDialog";
+
 import { RootState } from "@/redux/store";
 
 import { ScaleDeployments } from "../../MiscDetailsContainer/Deployments/ScaleDeployments";
@@ -161,6 +163,17 @@ const KwDetails = () => {
                       cluster={cluster}
                     />
                   }
+                  {
+                    resourcekind === PODS_ENDPOINT && 
+                    <PortForwardDialog
+                      resourceType="pod"
+                      resourceName={resourcename}
+                      namespace={namespace || ''}
+                      configName={config}
+                      clusterName={cluster}
+                      podDetails={podDetails}
+                    />
+                  }
                   {/* Delete on details page reuses the same component with empty selectedRows; it will use params */}
                   <TableDelete selectedRows={[]} />
                 </div>
@@ -182,8 +195,8 @@ const KwDetails = () => {
                         <TabsTrigger value='events'>Events</TabsTrigger>
                       </>
                     )}
-                    {resourceInitialData.label.toLowerCase() === PODS_ENDPOINT && <TabsTrigger value='logs'>Logs</TabsTrigger>}
-                    {resourceInitialData.label.toLowerCase() === PODS_ENDPOINT && <TabsTrigger value='exec'>Exec</TabsTrigger>}
+                    {resourcekind === PODS_ENDPOINT && <TabsTrigger value='logs'>Logs</TabsTrigger>}
+                    {resourcekind === PODS_ENDPOINT && <TabsTrigger value='exec'>Exec</TabsTrigger>}
                   </TabsList>
 
                   <TabsContent value='overview'>
@@ -192,7 +205,7 @@ const KwDetails = () => {
                       lableConditions={resourceData.lableConditionsCardDetails}
                       annotations={resourceData.annotationCardDetails}
                       miscComponent={resourceData.miscComponent}
-                      topComponent={(resourceInitialData.label.toLowerCase() === PODS_ENDPOINT) ? resourceData.topComponent : undefined}
+                      topComponent={(resourcekind === PODS_ENDPOINT) ? resourceData.topComponent : undefined}
                     />
                   </TabsContent>
                   
@@ -248,7 +261,7 @@ const KwDetails = () => {
                   )}
                   
                   {
-                    resourceInitialData.label.toLowerCase() === PODS_ENDPOINT &&
+                    resourcekind === PODS_ENDPOINT &&
                     <TabsContent value='logs'>
                       <PodLogs
                         name={podDetails?.metadata?.name}
@@ -259,7 +272,7 @@ const KwDetails = () => {
                     </TabsContent>
                   }
                   {
-                    resourceInitialData.label.toLowerCase() === PODS_ENDPOINT &&
+                    resourcekind === PODS_ENDPOINT &&
                     <TabsContent value='exec'>
                       <PodExec
                         pod={podDetails?.metadata?.name}
@@ -270,6 +283,7 @@ const KwDetails = () => {
                       />
                     </TabsContent>
                   }
+
                 </Tabs>
               }
             </>

@@ -7,6 +7,7 @@ import { CubeIcon } from "@radix-ui/react-icons";
 import { memo } from "react";
 import { useAppSelector } from "@/redux/hooks";
 
+
 const PodDetailsContainer = memo(function () {
   const {
     podDetails,

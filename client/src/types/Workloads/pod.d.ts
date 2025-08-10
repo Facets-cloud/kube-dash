@@ -52,6 +52,13 @@ type PodDetailsSpec = {
     resources: {
       [key: string]: string,
     },
+    ports?: {
+      containerPort: number,
+      protocol?: string,
+      name?: string,
+      hostPort?: number,
+      hostIP?: string
+    }[],
     volumeMounts:{
         name: string,
         readOnly: boolean,
@@ -68,6 +75,13 @@ type PodDetailsSpec = {
     resources: {
       [key: string]: string,
     },
+    ports?: {
+      containerPort: number,
+      protocol?: string,
+      name?: string,
+      hostPort?: number,
+      hostIP?: string
+    }[],
     volumeMounts:{
         name: string,
         readOnly: boolean,

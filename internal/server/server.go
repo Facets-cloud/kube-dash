@@ -15,6 +15,7 @@ import (
 	custom_resources "github.com/Facets-cloud/kube-dash/internal/api/handlers/custom-resources"
 	"github.com/Facets-cloud/kube-dash/internal/api/handlers/helm"
 	"github.com/Facets-cloud/kube-dash/internal/api/handlers/networking"
+	"github.com/Facets-cloud/kube-dash/internal/api/handlers/portforward"
 	storage_handlers "github.com/Facets-cloud/kube-dash/internal/api/handlers/storage"
 	"github.com/Facets-cloud/kube-dash/internal/api/handlers/websocket"
 	"github.com/Facets-cloud/kube-dash/internal/api/handlers/workloads"
@@ -87,7 +88,8 @@ type Server struct {
 	storageClassesHandler         *storage_handlers.StorageClassesHandler
 
 	// WebSocket handlers
-	podExecHandler *websocket.PodExecHandler
+	podExecHandler     *websocket.PodExecHandler
+	portForwardHandler *portforward.PortForwardHandler
 
 	// Helm handlers
 	helmHandler *helm.HelmHandler
@@ -166,6 +168,7 @@ func New(cfg *config.Config) *Server {
 
 	// Create WebSocket handlers
 	podExecHandler := websocket.NewPodExecHandler(store, clientFactory, log)
+	portForwardHandler := portforward.NewPortForwardHandler(store, clientFactory, log)
 
 	// Create Helm handlers
 	helmFactory := k8s.NewHelmClientFactory()
@@ -232,7 +235,8 @@ func New(cfg *config.Config) *Server {
 		storageClassesHandler:         storageClassesHandler,
 
 		// WebSocket handlers
-		podExecHandler: podExecHandler,
+		podExecHandler:     podExecHandler,
+		portForwardHandler: portForwardHandler,
 
 		// Helm handlers
 		helmHandler: helmHandler,
@@ -432,6 +436,11 @@ func (s *Server) setupRoutes() {
 		// WebSocket routes for pod exec
 		api.GET("/pods/:namespace/:name/exec/ws", s.podExecHandler.HandlePodExec)
 		api.GET("/pod/:name/exec/ws", s.podExecHandler.HandlePodExecByName)
+
+		// Port Forward routes
+		api.GET("/portforward/ws", s.portForwardHandler.HandlePortForward)
+		api.GET("/portforward/sessions", s.portForwardHandler.GetActiveSessions)
+		api.DELETE("/portforward/sessions/:id", s.portForwardHandler.StopSession)
 
 		api.GET("/deployments/:namespace/:name", s.deploymentsHandler.GetDeployment)
 		api.GET("/deployments/:namespace/:name/yaml", s.deploymentsHandler.GetDeploymentYAML)
