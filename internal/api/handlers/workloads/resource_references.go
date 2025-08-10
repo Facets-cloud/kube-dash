@@ -315,8 +315,14 @@ func (h *ResourceReferencesHandler) GetCronJobJobs(c *gin.Context) {
 		return
 	}
 
+	// Transform jobs to frontend-expected format
+	var response []types.JobListResponse
+	for _, job := range jobs.Items {
+		response = append(response, transformers.TransformJobToResponse(&job))
+	}
+
 	// Always send SSE format for detail endpoints since they're used by EventSource
-	h.sseHandler.SendSSEResponse(c, jobs)
+	h.sseHandler.SendSSEResponse(c, response)
 }
 
 // GetDeploymentPodsByName returns pods for a specific deployment by name using namespace from query parameters

@@ -1,4 +1,7 @@
 import DeploymentScaleSlice from '@/data/Workloads/Deployments/DeploymentScaleSlice';
+import CronJobTriggerSlice from '@/data/Workloads/CronJobs/CronJobTriggerSlice';
+import JobPodsSlice from '@/data/Workloads/Jobs/JobPodsSlice';
+import CronJobJobsSlice from '@/data/Workloads/CronJobs/CronJobJobsSlice';
 import addConfigSlice from '@/data/KwClusters/AddConfigSlice';
 import validateConfigSlice from '@/data/KwClusters/ValidateConfigSlice';
 import validateAllConfigsSlice from '@/data/KwClusters/ValidateAllConfigsSlice';
@@ -172,6 +175,9 @@ const store = configureStore({
     clusterEvents: clusterEventsListSlice,
     cloudShell: cloudShellSlice,
     deploymentScale: DeploymentScaleSlice,
+    cronJobTrigger: CronJobTriggerSlice,
+    jobPods: JobPodsSlice,
+    cronJobJobs: CronJobJobsSlice,
     helmReleases: helmReleasesReducer,
     helmReleaseDetails: helmReleaseDetailsReducer,
     helmReleaseResources: helmReleaseResourcesReducer,

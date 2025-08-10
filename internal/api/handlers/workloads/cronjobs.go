@@ -12,6 +12,7 @@ import (
 	"github.com/Facets-cloud/kube-dash/pkg/logger"
 
 	"github.com/gin-gonic/gin"
+	batchv1 "k8s.io/api/batch/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
@@ -289,4 +290,54 @@ func (h *CronJobsHandler) GetCronJobJobsByName(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, jobs)
+}
+
+// TriggerCronJob manually triggers a CronJob by creating a job from it
+func (h *CronJobsHandler) TriggerCronJob(c *gin.Context) {
+	client, err := h.getClientAndConfig(c)
+	if err != nil {
+		h.logger.WithError(err).Error("Failed to get client for cronjob trigger")
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	namespace := c.Param("namespace")
+	name := c.Param("name")
+
+	// Get the CronJob
+	cronJob, err := client.BatchV1().CronJobs(namespace).Get(c.Request.Context(), name, metav1.GetOptions{})
+	if err != nil {
+		h.logger.WithError(err).WithField("cronjob", name).WithField("namespace", namespace).Error("Failed to get cronjob for trigger")
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Create a job from the CronJob template
+	job := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			GenerateName: fmt.Sprintf("%s-manual-", name),
+			Namespace:    namespace,
+			Labels: map[string]string{
+				"job-name": name,
+			},
+		},
+		Spec: *cronJob.Spec.JobTemplate.Spec.DeepCopy(),
+	}
+
+	// Create the job
+	createdJob, err := client.BatchV1().Jobs(namespace).Create(c.Request.Context(), job, metav1.CreateOptions{})
+	if err != nil {
+		h.logger.WithError(err).WithField("cronjob", name).WithField("namespace", namespace).Error("Failed to create job from cronjob")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	h.logger.WithField("cronjob", name).WithField("job", createdJob.Name).WithField("namespace", namespace).Info("Successfully triggered cronjob")
+	c.JSON(http.StatusOK, gin.H{
+		"message": "CronJob triggered successfully",
+		"job": gin.H{
+			"name":      createdJob.Name,
+			"namespace": createdJob.Namespace,
+		},
+	})
 }

@@ -4,6 +4,8 @@ import PodMetricsChart from "@/components/app/MiscDetailsContainer/PodMetricsCha
 import { getClusterRoleBindingDetailsConfig, getClusterRoleDetailsConfig, getConfigMapDetailsConfig, getCronJobsDetailsConfig, getCustomResourceDefinitionsDetailsConfig, getCustomResourceDetailsConfig, getDaemonSetDetailsConfig, getDeploymentDetailsConfig, getEndpointDetailsConfig, getHelmReleaseDetailsConfig, getHPADetailsConfig, getIngressDetailsConfig, getJobsDetailsConfig, getLeaseDetailsConfig, getLimitRangeDetailsConfig, getNamespaceDetailsConfig, getNodeDetailsConfig, getPersistentVolumeClaimDetailsConfig, getPersistentVolumeDetailsConfig, getPodDetailsConfig, getPodDisruptionBudgetDetailsConfig, getPriorityClassDetailsConfig, getReplicaSetDetailsConfig, getResourceQuotaDetailsConfig, getRoleBindingDetailsConfig, getRoleDetailsConfig, getRuntimeClassDetailsConfig, getSecretDetailsConfig, getServiceAccountDetailsConfig, getServiceDetailsConfig, getStatefulSetDetailsConfig, getStorageClassDetailsConfig } from "@/utils/DetailType/DetailDefinations";
 
 import { ReplicaSetDetailsContainer } from "@/components/app/MiscDetailsContainer/ReplicaSetDetailsContainer";
+import { JobDetailsContainer } from "@/components/app/MiscDetailsContainer/Jobs/JobDetailsContainer";
+import { CronJobDetailsContainer } from "@/components/app/MiscDetailsContainer/CronJobs/CronJobDetailsContainer";
 import { HelmReleaseOverview } from '@/components/app/MiscDetailsContainer/HelmReleaseOverview';
 
 import { RootState } from "@/redux/store";
@@ -104,10 +106,10 @@ const useDetailsWrapper = ({ loading, resourcekind }: DetailsWapperProps) => {
     return { ...getReplicaSetDetailsConfig(replicaSetDetails, loading), miscComponent: <ReplicaSetDetailsContainer /> };
   }
   if (resourcekind === JOBS_ENDPOINT) {
-    return { ...getJobsDetailsConfig(jobDetails, loading), miscComponent: <></> };
+    return { ...getJobsDetailsConfig(jobDetails, loading), miscComponent: <JobDetailsContainer/> };
   }
   if (resourcekind === CRON_JOBS_ENDPOINT) {
-    return { ...getCronJobsDetailsConfig(cronJobDetails, loading), miscComponent: <></> };
+    return { ...getCronJobsDetailsConfig(cronJobDetails, loading), miscComponent: <CronJobDetailsContainer/> };
   }
   if (resourcekind === SECRETS_ENDPOINT) {
     return { ...getSecretDetailsConfig(secretsDetails, loading), miscComponent: <SecretDetailsContainer/> };
