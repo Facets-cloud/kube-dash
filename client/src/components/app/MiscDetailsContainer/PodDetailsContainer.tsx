@@ -13,6 +13,7 @@ const PodDetailsContainer = memo(function () {
   } = useAppSelector((state) => state.podDetails);
   const containerCards = createContainerData(podDetails.spec, podDetails.status, "containers");
   const initContainerCards = createContainerData(podDetails.spec, podDetails.status, "initContainers");
+
   return (
     <>
       {
@@ -295,6 +296,7 @@ const PodDetailsContainer = memo(function () {
           </CardContent>
         </Card>
       </div>
+
     </>
   );
 });

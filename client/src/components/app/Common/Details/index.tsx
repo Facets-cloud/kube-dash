@@ -174,6 +174,7 @@ const KwDetails = () => {
                       lableConditions={resourceData.lableConditionsCardDetails}
                       annotations={resourceData.annotationCardDetails}
                       miscComponent={resourceData.miscComponent}
+                      topComponent={(resourceInitialData.label.toLowerCase() === PODS_ENDPOINT) ? resourceData.topComponent : undefined}
                     />
                   </TabsContent>
                   

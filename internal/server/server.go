@@ -415,6 +415,7 @@ func (s *Server) setupRoutes() {
 		api.GET("/pods/:namespace/:name/yaml", s.podsHandler.GetPodYAML)
 		api.GET("/pods/:namespace/:name/events", s.podsHandler.GetPodEvents)
 		api.GET("/pods/:namespace/:name/logs", s.podsHandler.GetPodLogs)
+		api.GET("/pods/:namespace/:name/metrics", s.podsHandler.GetPodMetricsHistory)
 		api.GET("/pod/:name", s.podsHandler.GetPodByName)
 		api.GET("/pod/:name/yaml", s.podsHandler.GetPodYAMLByName)
 		api.GET("/pod/:name/events", s.podsHandler.GetPodEventsByName)

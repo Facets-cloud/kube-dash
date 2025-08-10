@@ -53,7 +53,7 @@ func TransformPodToResponse(pod *v1.Pod, configName, clusterName string) types.P
 		status = pod.Status.Reason
 	}
 
-	// Calculate CPU and memory usage (this would need metrics server in real implementation)
+	// Default CPU and memory; may be overwritten by live metrics in handler
 	cpu := "0"
 	memory := "0"
 	if pod.Status.ContainerStatuses != nil {

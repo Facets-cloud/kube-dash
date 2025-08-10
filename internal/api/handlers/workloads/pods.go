@@ -2,6 +2,7 @@ package workloads
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -21,7 +22,36 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	metricsclient "k8s.io/metrics/pkg/client/clientset/versioned"
 )
+
+// Helper to check metrics availability
+func (h *PodsHandler) getMetricsClient(c *gin.Context) (*metricsclient.Clientset, error) {
+	configID := c.Query("config")
+	cluster := c.Query("cluster")
+	if configID == "" {
+		return nil, fmt.Errorf("config parameter is required")
+	}
+	cfg, err := h.store.GetKubeConfig(configID)
+	if err != nil {
+		return nil, fmt.Errorf("config not found: %w", err)
+	}
+	return h.clientFactory.GetMetricsClientForConfig(cfg, cluster)
+}
+
+// formats millicores as string with m suffix
+func formatCPU(milli int64) string {
+	return fmt.Sprintf("%dm", milli)
+}
+
+// bytes to MiB integer string
+func bytesToMiBString(bytes int64) string {
+	if bytes <= 0 {
+		return "0"
+	}
+	mib := bytes / (1024 * 1024)
+	return strconv.FormatInt(mib, 10)
+}
 
 // PodsHandler handles all pod-related operations
 type PodsHandler struct {
@@ -111,6 +141,12 @@ func (h *PodsHandler) GetPodsSSE(c *gin.Context) {
 	configID := c.Query("config")
 	cluster := c.Query("cluster")
 
+	// Try to create metrics client; if fails, we'll proceed without metrics
+	var mClient *metricsclient.Clientset
+	if mc, mErr := h.getMetricsClient(c); mErr == nil {
+		mClient = mc
+	}
+
 	// Function to fetch and transform pods data
 	fetchPods := func() (interface{}, error) {
 		// Build list options with filters
@@ -155,10 +191,61 @@ func (h *PodsHandler) GetPodsSSE(c *gin.Context) {
 			return nil, err2
 		}
 
-		// Transform pods to the expected format
+		// Transform pods to the expected format first (fast path)
 		var transformedPods []types.PodListResponse
 		for _, pod := range podList.Items {
 			transformedPods = append(transformedPods, transformers.TransformPodToResponse(&pod, configID, cluster))
+		}
+
+		// Best-effort metrics overlay: single List call with short timeout; do not block initial response
+		if mClient != nil {
+			// Build a quick lookup for the current pods we have
+			podSet := make(map[string]struct{}, len(transformedPods))
+			for _, p := range transformedPods {
+				key := p.Namespace + "/" + p.BaseResponse.Name
+				podSet[key] = struct{}{}
+			}
+
+			// Use short timeout so we never block
+			ctx, cancel := context.WithTimeout(c.Request.Context(), 800*time.Millisecond)
+			defer cancel()
+
+			// Metrics API list per namespace or all namespaces
+			// Use empty selector to avoid metrics-server field selector limitations
+			metricsList, err := mClient.MetricsV1beta1().PodMetricses(namespace).List(ctx, metav1.ListOptions{})
+			if err == nil {
+				// Aggregate metrics per pod
+				type agg struct {
+					cpuMilli int64
+					memBytes int64
+				}
+				metricsMap := make(map[string]agg, len(metricsList.Items))
+				for _, pm := range metricsList.Items {
+					var cpuMilli int64
+					var memBytes int64
+					for _, cont := range pm.Containers {
+						if cpuQty, ok := cont.Usage[v1.ResourceCPU]; ok {
+							cpuMilli += cpuQty.MilliValue()
+						}
+						if memQty, ok := cont.Usage[v1.ResourceMemory]; ok {
+							memBytes += memQty.Value()
+						}
+					}
+					key := pm.Namespace + "/" + pm.Name
+					if _, ok := podSet[key]; ok {
+						metricsMap[key] = agg{cpuMilli: cpuMilli, memBytes: memBytes}
+					}
+				}
+
+				// Overlay into transformed list
+				for i := range transformedPods {
+					key := transformedPods[i].Namespace + "/" + transformedPods[i].BaseResponse.Name
+					if v, ok := metricsMap[key]; ok {
+						transformedPods[i].CPU = formatCPU(v.cpuMilli)
+						transformedPods[i].Memory = bytesToMiBString(v.memBytes)
+					}
+				}
+			}
 		}
 
 		return transformedPods, nil
@@ -572,6 +659,52 @@ func (h *PodsHandler) GetPodLogs(c *gin.Context) {
 			streamContainerLogs(pod.Spec.Containers[0].Name)
 		}
 	}
+}
+
+// GetPodMetricsHistory streams recent pod metrics as SSE (best-effort, only if metrics server is available)
+func (h *PodsHandler) GetPodMetricsHistory(c *gin.Context) {
+	name := c.Param("name")
+	namespace := c.Param("namespace")
+
+	// Attempt to get metrics client
+	mClient, err := h.getMetricsClient(c)
+	if err != nil {
+		h.sseHandler.SendSSEError(c, http.StatusNotFound, fmt.Sprintf("metrics not available: %v", err))
+		return
+	}
+
+	// Build fetch function: best we can do is poll current usage periodically to form a timeline client-side
+	fetch := func() (interface{}, error) {
+		m, err := mClient.MetricsV1beta1().PodMetricses(namespace).Get(c.Request.Context(), name, metav1.GetOptions{})
+		if err != nil {
+			return nil, err
+		}
+		var totalCPUMilli int64
+		var totalMemBytes int64
+		for _, cont := range m.Containers {
+			if cpuQty, ok := cont.Usage[v1.ResourceCPU]; ok {
+				totalCPUMilli += cpuQty.MilliValue()
+			}
+			if memQty, ok := cont.Usage[v1.ResourceMemory]; ok {
+				totalMemBytes += memQty.Value()
+			}
+		}
+		point := types.PodMetricsPoint{
+			Timestamp: time.Now().UTC().Format(time.RFC3339),
+			CPU:       formatCPU(totalCPUMilli),
+			Memory:    bytesToMiBString(totalMemBytes),
+		}
+		// send a single point; frontend accumulates
+		return point, nil
+	}
+
+	// Prime one sample, then periodic updates
+	initial, err := fetch()
+	if err != nil {
+		h.sseHandler.SendSSEError(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	h.sseHandler.SendSSEResponseWithUpdates(c, initial, fetch)
 }
 
 // GetPodLogsByName returns logs for a specific pod by name using namespace from query parameters
