@@ -1,5 +1,5 @@
 import { createEventStreamQueryObject, getEventStreamUrl, getSystemTheme } from '@/utils';
-import { validateKubernetesYaml, formatYaml, extractResourceInfo, hasYamlChanges } from '@/utils/yamlUtils';
+import { validateKubernetesYaml, formatYaml, extractResourceInfo, hasYamlChanges, cleanYamlForPatch } from '@/utils/yamlUtils';
 import { checkYamlEditPermission, getPermissionDenialMessage, YamlEditPermissionResult } from '@/utils/yamlPermissions';
 import { memo, useCallback, useEffect, useState } from 'react';
 import type { editor as MonacoEditor } from 'monaco-editor';
@@ -155,8 +155,9 @@ const EnhancedYamlEditor = memo(function ({
       });
     }
 
-    // Format YAML before applying
-    const formattedYaml = formatYaml(value);
+    // Clean and format YAML before applying
+    const cleanedYaml = cleanYamlForPatch(value);
+    const formattedYaml = formatYaml(cleanedYaml);
     setValue(formattedYaml);
 
     dispatch(updateYaml({
@@ -175,9 +176,7 @@ const EnhancedYamlEditor = memo(function ({
 
   const handleEdit = () => {
     if (!permissionResult?.allowed) {
-      const message = getPermissionDenialMessage(permissionResult!);
-      toast.error('Permission Denied', { description: message });
-      return;
+      return; // Button is disabled, so this shouldn't happen, but just in case
     }
     setIsEditing(true);
     setYamlUpdated(false);
@@ -302,7 +301,7 @@ const EnhancedYamlEditor = memo(function ({
                     size="sm"
                     onClick={handleEdit}
                     disabled={checkingPermission || !permissionResult?.allowed}
-                    className="gap-2"
+                    className={`gap-2 ${!permissionResult?.allowed ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
                     {checkingPermission ? (
                       <Loader className="h-4 w-4 animate-spin" />
@@ -312,9 +311,19 @@ const EnhancedYamlEditor = memo(function ({
                     {checkingPermission ? 'Checking...' : 'Edit'}
                   </Button>
                 </TooltipTrigger>
-                {!checkingPermission && !permissionResult?.allowed && (
+                {(checkingPermission || !permissionResult?.allowed) && (
                   <TooltipContent>
-                    <p>You don't have permissions to edit this resource</p>
+                    <p className="text-sm">
+                      {checkingPermission 
+                        ? 'Checking permissions...' 
+                        : getPermissionDenialMessage(permissionResult!)
+                      }
+                    </p>
+                    {!checkingPermission && !permissionResult?.allowed && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Contact your cluster administrator if you believe this is an error.
+                      </p>
+                    )}
                   </TooltipContent>
                 )}
               </Tooltip>
@@ -365,19 +374,7 @@ const EnhancedYamlEditor = memo(function ({
         </div>
       </div>
 
-      {/* Permission Alert */}
-      {permissionResult && !checkingPermission && !permissionResult.allowed && (
-        <Alert variant="destructive" className="m-4">
-          <AlertCircleIcon className="h-4 w-4" />
-          <AlertTitle>Permission Denied</AlertTitle>
-          <AlertDescription>
-            <p className="text-sm">{getPermissionDenialMessage(permissionResult)}</p>
-            <p className="text-xs text-muted-foreground mt-2">
-              Contact your cluster administrator if you believe this is an error.
-            </p>
-          </AlertDescription>
-        </Alert>
-      )}
+
 
       {/* Validation Alerts */}
       {yamlValidationErrors.length > 0 && (

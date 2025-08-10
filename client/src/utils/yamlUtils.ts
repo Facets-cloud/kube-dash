@@ -102,6 +102,54 @@ export function validateKubernetesYaml(yamlContent: string): YamlValidationResul
       warnings.push('Status field detected - this is typically managed by Kubernetes and should not be modified');
     }
 
+    // Check for other problematic fields
+    const problematicFields = [
+      'metadata.resourceVersion',
+      'metadata.generation',
+      'metadata.uid',
+      'metadata.creationTimestamp',
+      'metadata.managedFields',
+      'metadata.generateName',
+      'metadata.deletionGracePeriodSeconds',
+      'spec.minReadySeconds',
+      'spec.revisionHistoryLimit',
+      'spec.progressDeadlineSeconds',
+      'spec.selector.matchLabels',
+      'spec.strategy.rollingUpdate',
+      'spec.template.metadata.generateName',
+      'spec.template.metadata.resourceVersion',
+      'spec.template.metadata.generation',
+      'spec.template.metadata.uid',
+      'spec.template.metadata.creationTimestamp',
+      'spec.template.metadata.managedFields'
+    ];
+
+    for (const field of problematicFields) {
+      const fieldParts = field.split('.');
+      let currentLevel = lines;
+      let found = false;
+      
+      for (let i = 0; i < fieldParts.length; i++) {
+        const part = fieldParts[i];
+        for (const line of currentLevel) {
+          const trimmedLine = line.trim();
+          if (trimmedLine.startsWith(`${part}:`)) {
+            if (i === fieldParts.length - 1) {
+              found = true;
+              break;
+            }
+            // This is a simplified check - in a real implementation you'd need to track indentation levels
+            break;
+          }
+        }
+        if (found) break;
+      }
+      
+      if (found) {
+        warnings.push(`${field} detected - this field is typically managed by Kubernetes and may cause apply conflicts`);
+      }
+    }
+
     return {
       isValid: errors.length === 0,
       errors,
@@ -214,4 +262,77 @@ export function extractResourceInfo(yamlContent: string): {
 export function hasYamlChanges(original: string, current: string): boolean {
   const normalize = (yaml: string) => yaml.trim().replace(/\r\n/g, '\n');
   return normalize(original) !== normalize(current);
+}
+
+/**
+ * Cleans YAML content by removing fields that should not be included in patches
+ */
+export function cleanYamlForPatch(yamlContent: string): string {
+  try {
+    const lines = yamlContent.split('\n');
+    const cleanedLines: string[] = [];
+    let skipUntilLevel = -1;
+    let currentIndentLevel = 0;
+
+    for (const line of lines) {
+      const trimmedLine = line.trim();
+      
+      // Skip empty lines and comments
+      if (trimmedLine === '' || trimmedLine.startsWith('#')) {
+        cleanedLines.push(line);
+        continue;
+      }
+
+      // Calculate current indentation level
+      const match = line.match(/^(\s*)/);
+      const indent = match ? match[1] : '';
+      currentIndentLevel = Math.floor(indent.length / 2); // Assuming 2 spaces per level
+
+      // Check if we should skip this line
+      if (skipUntilLevel >= 0) {
+        if (currentIndentLevel <= skipUntilLevel) {
+          skipUntilLevel = -1; // Stop skipping
+        } else {
+          continue; // Skip this line
+        }
+      }
+
+      // Check for fields to remove
+      const fieldsToRemove = [
+        'status:',
+        'resourceVersion:',
+        'generation:',
+        'uid:',
+        'creationTimestamp:',
+        'managedFields:',
+        'finalizers:',
+        'ownerReferences:',
+        'generateName:',
+        'deletionGracePeriodSeconds:',
+        'minReadySeconds:',
+        'revisionHistoryLimit:',
+        'progressDeadlineSeconds:',
+        'matchLabels:',
+        'rollingUpdate:'
+      ];
+
+      let shouldSkip = false;
+      for (const field of fieldsToRemove) {
+        if (trimmedLine.startsWith(field)) {
+          shouldSkip = true;
+          skipUntilLevel = currentIndentLevel;
+          break;
+        }
+      }
+
+      if (!shouldSkip) {
+        cleanedLines.push(line);
+      }
+    }
+
+    return cleanedLines.join('\n');
+  } catch (error) {
+    // If cleaning fails, return original content
+    return yamlContent;
+  }
 }

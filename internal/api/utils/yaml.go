@@ -133,7 +133,7 @@ func (h *YAMLHandler) getGVKFromTypedObject(obj interface{}) (schema.GroupVersio
 }
 
 // ensureCompleteYAML ensures that the YAML includes all necessary Kubernetes resource fields
-func (h *YAMLHandler) ensureCompleteYAML(resource interface{}) ([]byte, error) {
+func (h *YAMLHandler) EnsureCompleteYAML(resource interface{}) ([]byte, error) {
 	// Log the resource type for debugging
 	h.logger.WithField("resource_type", fmt.Sprintf("%T", resource)).Info("Processing resource for YAML conversion")
 
@@ -440,7 +440,7 @@ func (h *YAMLHandler) ensureCompleteYAML(resource interface{}) ([]byte, error) {
 // SendYAMLResponse sends a YAML response in the appropriate format based on the Accept header
 func (h *YAMLHandler) SendYAMLResponse(c *gin.Context, resource interface{}, resourceName string) {
 	// Ensure the YAML is complete with all necessary fields
-	yamlData, err := h.ensureCompleteYAML(resource)
+	yamlData, err := h.EnsureCompleteYAML(resource)
 	if err != nil {
 		h.logger.WithError(err).Error("Failed to ensure complete YAML")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to convert to YAML"})
@@ -472,7 +472,7 @@ func (h *YAMLHandler) SendYAMLResponse(c *gin.Context, resource interface{}, res
 // SendYAMLResponseWithSSE sends a YAML response with SSE support
 func (h *YAMLHandler) SendYAMLResponseWithSSE(c *gin.Context, resource interface{}, sseHandler func(*gin.Context, interface{})) {
 	// Ensure the YAML is complete with all necessary fields
-	yamlData, err := h.ensureCompleteYAML(resource)
+	yamlData, err := h.EnsureCompleteYAML(resource)
 	if err != nil {
 		h.logger.WithError(err).Error("Failed to ensure complete YAML")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to convert to YAML"})

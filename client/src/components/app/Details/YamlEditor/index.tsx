@@ -1,11 +1,12 @@
 import { createEventStreamQueryObject, getEventStreamUrl, getSystemTheme } from '@/utils';
+import { formatYaml, cleanYamlForPatch } from '@/utils/yamlUtils';
 import { memo, useCallback, useEffect, useState } from 'react';
 import type { editor as MonacoEditor } from 'monaco-editor';
 import { resetUpdateYaml, updateYaml } from '@/data/Yaml/YamlUpdateSlice';
 import { useAppDispatch, useAppSelector } from '@/redux/hooks';
 
 import { Button } from '@/components/ui/button';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+
 import Editor from './MonacoWrapper';
 import { Loader } from '../../Loader';
 import { SaveIcon, CheckCircleIcon, AlertCircleIcon } from "lucide-react";
@@ -65,7 +66,6 @@ const YamlEditor = memo(function ({ instanceType, name, namespace, clusterName, 
     const checkPermissions = async () => {
       if (!configName || !clusterName || !name) return;
       
-      setCheckingPermission(true);
       try {
         const result = await checkYamlEditPermission({
           config: configName,
@@ -91,8 +91,6 @@ const YamlEditor = memo(function ({ instanceType, name, namespace, clusterName, 
           namespace,
           name,
         });
-      } finally {
-        setCheckingPermission(false);
       }
     };
 
@@ -102,7 +100,6 @@ const YamlEditor = memo(function ({ instanceType, name, namespace, clusterName, 
   const [hasYamlErrors, setHasYamlErrors] = useState(false);
   const [yamlValidationErrors, setYamlValidationErrors] = useState<string[]>([]);
   const [permissionResult, setPermissionResult] = useState<YamlEditPermissionResult | null>(null);
-  const [checkingPermission, setCheckingPermission] = useState<boolean>(false);
 
   const onValidate = useCallback((markers: MonacoEditor.IMarker[]) => {
     setHasYamlErrors((markers || []).length > 0);
@@ -158,9 +155,7 @@ const YamlEditor = memo(function ({ instanceType, name, namespace, clusterName, 
 
   const yamlUpdate = () => {
     if (!permissionResult?.allowed) {
-      const message = getPermissionDenialMessage(permissionResult!);
-      toast.error('Permission Denied', { description: message });
-      return;
+      return; // Button is disabled, so this shouldn't happen, but just in case
     }
 
     if (hasYamlErrors) {
@@ -173,8 +168,13 @@ const YamlEditor = memo(function ({ instanceType, name, namespace, clusterName, 
       return;
     }
 
+    // Clean and format YAML before applying
+    const cleanedYaml = cleanYamlForPatch(value);
+    const formattedYaml = formatYaml(cleanedYaml);
+    setValue(formattedYaml);
+
     dispatch(updateYaml({
-      data: value,
+      data: formattedYaml,
       queryParams
     }));
   };
@@ -281,7 +281,7 @@ const YamlEditor = memo(function ({ instanceType, name, namespace, clusterName, 
                       <Button
                         variant="default"
                         size="sm"
-                        className='gap-2 px-4 py-2'
+                        className={`gap-2 px-4 py-2 ${!permissionResult?.allowed ? 'opacity-50 cursor-not-allowed' : ''}`}
                         onClick={yamlUpdate}
                         disabled={hasYamlErrors || yamlUpdateLoading || !permissionResult?.allowed}
                       >
@@ -293,9 +293,21 @@ const YamlEditor = memo(function ({ instanceType, name, namespace, clusterName, 
                         <span className='text-xs'>Apply</span>
                       </Button>
                     </TooltipTrigger>
-                    {!permissionResult?.allowed && (
+                    {(hasYamlErrors || yamlUpdateLoading || !permissionResult?.allowed) && (
                       <TooltipContent>
-                        <p>You don't have permissions to edit this resource</p>
+                        <p className="text-sm">
+                          {hasYamlErrors 
+                            ? 'Cannot apply YAML with validation errors' 
+                            : yamlUpdateLoading 
+                              ? 'Applying changes...' 
+                              : getPermissionDenialMessage(permissionResult!)
+                          }
+                        </p>
+                        {!hasYamlErrors && !yamlUpdateLoading && !permissionResult?.allowed && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Contact your cluster administrator if you believe this is an error.
+                          </p>
+                        )}
                       </TooltipContent>
                     )}
                   </Tooltip>
@@ -320,19 +332,7 @@ const YamlEditor = memo(function ({ instanceType, name, namespace, clusterName, 
               </div>
             )}
 
-            {/* Permission Alert */}
-            {permissionResult && !checkingPermission && !permissionResult.allowed && (
-              <Alert variant="destructive" className="m-4">
-                <AlertCircleIcon className="h-4 w-4" />
-                <AlertTitle>Permission Denied</AlertTitle>
-                <AlertDescription>
-                  <p className="text-sm">{getPermissionDenialMessage(permissionResult)}</p>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    Contact your cluster administrator if you believe this is an error.
-                  </p>
-                </AlertDescription>
-              </Alert>
-            )}
+
 
             <Editor
               value={value}

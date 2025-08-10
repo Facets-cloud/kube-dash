@@ -1,7 +1,6 @@
 package configurations
 
 import (
-	"encoding/base64"
 	"fmt"
 	"net/http"
 
@@ -13,7 +12,6 @@ import (
 	"github.com/Facets-cloud/kube-dash/pkg/logger"
 
 	"github.com/gin-gonic/gin"
-	"gopkg.in/yaml.v3"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
@@ -220,26 +218,7 @@ func (h *PodDisruptionBudgetsHandler) GetPodDisruptionBudgetYAMLByName(c *gin.Co
 		return
 	}
 
-	// Convert to YAML
-	yamlData, err := yaml.Marshal(podDisruptionBudget)
-	if err != nil {
-		h.logger.WithError(err).Error("Failed to marshal pod disruption budget to YAML")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to convert to YAML"})
-		return
-	}
-
-	// Check if this is an SSE request (EventSource expects SSE format)
-	acceptHeader := c.GetHeader("Accept")
-	if acceptHeader == "text/event-stream" {
-		// For EventSource, send the YAML data as base64 encoded string
-		encodedYAML := base64.StdEncoding.EncodeToString(yamlData)
-		h.sseHandler.SendSSEResponse(c, gin.H{"data": encodedYAML})
-		return
-	}
-
-	// Return as base64 encoded string to match frontend expectations
-	encodedYAML := base64.StdEncoding.EncodeToString(yamlData)
-	c.JSON(http.StatusOK, gin.H{"data": encodedYAML})
+	h.yamlHandler.SendYAMLResponse(c, podDisruptionBudget, name)
 }
 
 // GetPodDisruptionBudgetYAML returns the YAML representation of a specific pod disruption budget
@@ -260,26 +239,7 @@ func (h *PodDisruptionBudgetsHandler) GetPodDisruptionBudgetYAML(c *gin.Context)
 		return
 	}
 
-	// Convert to YAML
-	yamlData, err := yaml.Marshal(podDisruptionBudget)
-	if err != nil {
-		h.logger.WithError(err).Error("Failed to marshal pod disruption budget to YAML")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to convert to YAML"})
-		return
-	}
-
-	// Check if this is an SSE request (EventSource expects SSE format)
-	acceptHeader := c.GetHeader("Accept")
-	if acceptHeader == "text/event-stream" {
-		// For EventSource, send the YAML data as base64 encoded string
-		encodedYAML := base64.StdEncoding.EncodeToString(yamlData)
-		h.sseHandler.SendSSEResponse(c, gin.H{"data": encodedYAML})
-		return
-	}
-
-	// Return as base64 encoded string to match frontend expectations
-	encodedYAML := base64.StdEncoding.EncodeToString(yamlData)
-	c.JSON(http.StatusOK, gin.H{"data": encodedYAML})
+	h.yamlHandler.SendYAMLResponse(c, podDisruptionBudget, name)
 }
 
 // GetPodDisruptionBudgetEventsByName returns events for a specific pod disruption budget by name using namespace from query parameters

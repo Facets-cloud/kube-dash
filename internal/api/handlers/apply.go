@@ -19,6 +19,72 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
+// cleanObjectForPatch removes fields that should not be included in server-side apply patches
+func cleanObjectForPatch(obj *unstructured.Unstructured) {
+	// Remove status field - it's managed by Kubernetes
+	delete(obj.Object, "status")
+
+	// Remove metadata fields that are managed by Kubernetes
+	if metadata, exists := obj.Object["metadata"].(map[string]interface{}); exists {
+		// Remove resourceVersion - it's managed by Kubernetes and causes conflicts
+		delete(metadata, "resourceVersion")
+		// Remove generation - it's managed by Kubernetes
+		delete(metadata, "generation")
+		// Remove uid - it's managed by Kubernetes
+		delete(metadata, "uid")
+		// Remove creationTimestamp - it's managed by Kubernetes
+		delete(metadata, "creationTimestamp")
+		// Remove managedFields - it's managed by Kubernetes
+		delete(metadata, "managedFields")
+		// Remove finalizers - they should be managed carefully
+		delete(metadata, "finalizers")
+		// Remove ownerReferences - they should be managed carefully
+		delete(metadata, "ownerReferences")
+		// Remove generateName - it's managed by Kubernetes
+		delete(metadata, "generateName")
+		// Remove deletionGracePeriodSeconds - it's managed by Kubernetes
+		delete(metadata, "deletionGracePeriodSeconds")
+	}
+
+	// Remove spec fields that might not be declared in schema
+	if spec, exists := obj.Object["spec"].(map[string]interface{}); exists {
+		// Remove minReadySeconds if it's not declared in schema for this resource
+		delete(spec, "minReadySeconds")
+		// Remove other potentially problematic fields
+		delete(spec, "revisionHistoryLimit")
+		delete(spec, "progressDeadlineSeconds")
+
+		// Clean selector matchLabels if it exists
+		if selector, exists := spec["selector"].(map[string]interface{}); exists {
+			if _, exists := selector["matchLabels"].(map[string]interface{}); exists {
+				// Remove matchLabels if it's causing schema issues
+				delete(selector, "matchLabels")
+			}
+		}
+
+		// Clean strategy rollingUpdate if it exists
+		if strategy, exists := spec["strategy"].(map[string]interface{}); exists {
+			if _, exists := strategy["rollingUpdate"].(map[string]interface{}); exists {
+				// Remove rollingUpdate if it's causing schema issues
+				delete(strategy, "rollingUpdate")
+			}
+		}
+
+		// Clean template metadata if it exists
+		if template, exists := spec["template"].(map[string]interface{}); exists {
+			if templateMetadata, exists := template["metadata"].(map[string]interface{}); exists {
+				// Remove problematic template metadata fields
+				delete(templateMetadata, "generateName")
+				delete(templateMetadata, "resourceVersion")
+				delete(templateMetadata, "generation")
+				delete(templateMetadata, "uid")
+				delete(templateMetadata, "creationTimestamp")
+				delete(templateMetadata, "managedFields")
+			}
+		}
+	}
+}
+
 // ApplyResources handles applying one or more Kubernetes resources provided as YAML.
 // It performs basic validation and uses server-side apply for idempotent creation/update.
 // Request: multipart/form-data with field "yaml" containing one or more YAML documents (--- separated)
@@ -90,6 +156,9 @@ func (h *ResourcesHandler) ApplyResources(c *gin.Context) {
 
 		obj := &unstructured.Unstructured{Object: raw}
 		gvk := obj.GroupVersionKind()
+
+		// Clean the object to remove fields that shouldn't be in patches
+		cleanObjectForPatch(obj)
 
 		// Enhanced validation for required fields
 		if gvk.Empty() || gvk.Kind == "" || gvk.Version == "" {

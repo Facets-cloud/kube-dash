@@ -13,6 +13,7 @@ import { FilePlusIcon } from "@radix-ui/react-icons";
 import { Loader } from '../../Loader';
 import { SaveIcon } from "lucide-react";
 import { getSystemTheme } from "@/utils";
+import { validateKubernetesYaml, formatYaml, cleanYamlForPatch } from '@/utils/yamlUtils';
 import { kwList, appRoute } from '@/routes';
 import { toast } from 'sonner';
 import { CUSTOM_RESOURCES_LIST_ENDPOINT } from '@/constants';
@@ -81,8 +82,29 @@ const AddResource = () => {
       toast.error('Invalid YAML', { description: 'Please fix YAML errors before applying.' });
       return;
     }
+
+    // Validate YAML before applying
+    const validation = validateKubernetesYaml(value);
+    if (!validation.isValid) {
+      toast.error('Invalid YAML', { 
+        description: `Please fix the following errors:\n${validation.errors.join('\n')}` 
+      });
+      return;
+    }
+
+    if (validation.warnings.length > 0) {
+      toast.warning('YAML Warnings', { 
+        description: `Consider addressing these warnings:\n${validation.warnings.join('\n')}` 
+      });
+    }
+
+    // Clean and format YAML before applying
+    const cleanedYaml = cleanYamlForPatch(value);
+    const formattedYaml = formatYaml(cleanedYaml);
+    setValue(formattedYaml);
+
     dispatch(updateYaml({
-      data: value,
+      data: formattedYaml,
       queryParams
     }));
   };

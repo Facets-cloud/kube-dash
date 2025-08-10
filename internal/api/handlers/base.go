@@ -138,6 +138,8 @@ var resourceMapping = map[string]struct {
 	"nodes":                  {schema.GroupVersionResource{Group: "", Version: "v1", Resource: "nodes"}, false},
 	"persistentvolumes":      {schema.GroupVersionResource{Group: "", Version: "v1", Resource: "persistentvolumes"}, false},
 	"persistentvolumeclaims": {schema.GroupVersionResource{Group: "", Version: "v1", Resource: "persistentvolumeclaims"}, true},
+	"limitranges":            {schema.GroupVersionResource{Group: "", Version: "v1", Resource: "limitranges"}, true},
+	"resourcequotas":         {schema.GroupVersionResource{Group: "", Version: "v1", Resource: "resourcequotas"}, true},
 
 	// Networking v1
 	"ingresses": {schema.GroupVersionResource{Group: "networking.k8s.io", Version: "v1", Resource: "ingresses"}, true},

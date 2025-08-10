@@ -13,7 +13,6 @@ import (
 	"github.com/Facets-cloud/kube-dash/pkg/logger"
 
 	"github.com/gin-gonic/gin"
-	"gopkg.in/yaml.v3"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
@@ -220,8 +219,8 @@ func (h *ResourceQuotasHandler) GetResourceQuotaYAMLByName(c *gin.Context) {
 		return
 	}
 
-	// Convert to YAML
-	yamlData, err := yaml.Marshal(resourceQuota)
+	// Convert to YAML using the YAML handler to ensure proper format
+	yamlData, err := h.yamlHandler.EnsureCompleteYAML(resourceQuota)
 	if err != nil {
 		h.logger.WithError(err).Error("Failed to marshal resource quota to YAML")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to convert to YAML"})
@@ -260,26 +259,7 @@ func (h *ResourceQuotasHandler) GetResourceQuotaYAML(c *gin.Context) {
 		return
 	}
 
-	// Convert to YAML
-	yamlData, err := yaml.Marshal(resourceQuota)
-	if err != nil {
-		h.logger.WithError(err).Error("Failed to marshal resource quota to YAML")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to convert to YAML"})
-		return
-	}
-
-	// Check if this is an SSE request (EventSource expects SSE format)
-	acceptHeader := c.GetHeader("Accept")
-	if acceptHeader == "text/event-stream" {
-		// For EventSource, send the YAML data as base64 encoded string
-		encodedYAML := base64.StdEncoding.EncodeToString(yamlData)
-		h.sseHandler.SendSSEResponse(c, gin.H{"data": encodedYAML})
-		return
-	}
-
-	// Return as base64 encoded string to match frontend expectations
-	encodedYAML := base64.StdEncoding.EncodeToString(yamlData)
-	c.JSON(http.StatusOK, gin.H{"data": encodedYAML})
+	h.yamlHandler.SendYAMLResponse(c, resourceQuota, name)
 }
 
 // GetResourceQuotaEventsByName returns events for a specific resource quota by name using namespace from query parameters
