@@ -310,6 +310,11 @@ func (s *Server) setupRoutes() {
 		api.GET("/nodes/:name/yaml", s.nodesHandler.GetNodeYAML)
 		api.GET("/nodes/:name/events", s.nodesHandler.GetNodeEvents)
 		api.GET("/nodes/:name/pods", s.nodesHandler.GetNodePods)
+		// Node actions
+		api.POST("/nodes/:name/cordon", s.nodesHandler.CordonNode)
+		api.POST("/nodes/:name/uncordon", s.nodesHandler.UncordonNode)
+		api.POST("/nodes/:name/drain", s.nodesHandler.DrainNode)
+		api.GET("/nodes/actions/permissions", s.nodesHandler.CheckNodeActionPermission)
 		api.GET("/customresourcedefinitions", s.customResourceDefinitionsHandler.GetCustomResourceDefinitionsSSE)
 		api.GET("/customresourcedefinitions/:name", s.customResourceDefinitionsHandler.GetCustomResourceDefinition)
 		api.GET("/customresources", s.customResourcesHandler.GetCustomResourcesSSE)

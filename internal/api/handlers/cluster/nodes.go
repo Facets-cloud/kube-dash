@@ -13,8 +13,11 @@ import (
 	"github.com/Facets-cloud/kube-dash/pkg/logger"
 
 	"github.com/gin-gonic/gin"
+	authorizationv1 "k8s.io/api/authorization/v1"
 	v1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8stypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -367,4 +370,328 @@ func (h *NodesHandler) GetNodePods(c *gin.Context) {
 
 	// For non-SSE requests, return JSON
 	c.JSON(http.StatusOK, initialData)
+}
+
+// NodeActionRequest represents the request format for node actions
+type NodeActionRequest struct {
+	Force              bool `json:"force"`
+	IgnoreDaemonSets   bool `json:"ignoreDaemonSets"`
+	DeleteEmptyDirData bool `json:"deleteEmptyDirData"`
+	GracePeriod        int  `json:"gracePeriod"`
+}
+
+// CordonNode marks a node as unschedulable
+func (h *NodesHandler) CordonNode(c *gin.Context) {
+	client, err := h.getClientAndConfig(c)
+	if err != nil {
+		h.logger.WithError(err).Error("Failed to get client for cordon node")
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	name := c.Param("name")
+
+	// Get the current node
+	node, err := client.CoreV1().Nodes().Get(c.Request.Context(), name, metav1.GetOptions{})
+	if err != nil {
+		h.logger.WithError(err).WithField("node", name).Error("Failed to get node for cordon")
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Check if node is already cordoned
+	if node.Spec.Unschedulable {
+		c.JSON(http.StatusOK, gin.H{"message": "Node is already cordoned"})
+		return
+	}
+
+	// Create a patch to mark the node as unschedulable
+	patch := []byte(`{"spec":{"unschedulable":true}}`)
+
+	_, err = client.CoreV1().Nodes().Patch(
+		c.Request.Context(),
+		name,
+		k8stypes.StrategicMergePatchType,
+		patch,
+		metav1.PatchOptions{},
+	)
+	if err != nil {
+		h.logger.WithError(err).WithField("node", name).Error("Failed to cordon node")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Node cordoned successfully"})
+}
+
+// UncordonNode marks a node as schedulable
+func (h *NodesHandler) UncordonNode(c *gin.Context) {
+	client, err := h.getClientAndConfig(c)
+	if err != nil {
+		h.logger.WithError(err).Error("Failed to get client for uncordon node")
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	name := c.Param("name")
+
+	// Get the current node
+	node, err := client.CoreV1().Nodes().Get(c.Request.Context(), name, metav1.GetOptions{})
+	if err != nil {
+		h.logger.WithError(err).WithField("node", name).Error("Failed to get node for uncordon")
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Check if node is already uncordoned
+	if !node.Spec.Unschedulable {
+		c.JSON(http.StatusOK, gin.H{"message": "Node is already uncordoned"})
+		return
+	}
+
+	// Create a patch to mark the node as schedulable
+	patch := []byte(`{"spec":{"unschedulable":false}}`)
+
+	_, err = client.CoreV1().Nodes().Patch(
+		c.Request.Context(),
+		name,
+		k8stypes.StrategicMergePatchType,
+		patch,
+		metav1.PatchOptions{},
+	)
+	if err != nil {
+		h.logger.WithError(err).WithField("node", name).Error("Failed to uncordon node")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Node uncordoned successfully"})
+}
+
+// DrainNode evicts all pods from a node
+func (h *NodesHandler) DrainNode(c *gin.Context) {
+	client, err := h.getClientAndConfig(c)
+	if err != nil {
+		h.logger.WithError(err).Error("Failed to get client for drain node")
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	name := c.Param("name")
+
+	// Parse request body for drain options
+	var req NodeActionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	// Get the node (we need this to check if it exists)
+	_, err = client.CoreV1().Nodes().Get(c.Request.Context(), name, metav1.GetOptions{})
+	if err != nil {
+		h.logger.WithError(err).WithField("node", name).Error("Failed to get node for drain")
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Get all pods on this node
+	pods, err := client.CoreV1().Pods("").List(c.Request.Context(), metav1.ListOptions{
+		FieldSelector: fmt.Sprintf("spec.nodeName=%s", name),
+	})
+	if err != nil {
+		h.logger.WithError(err).WithField("node", name).Error("Failed to list pods for drain")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	var evictedPods []string
+	var failedPods []string
+
+	// Evict each pod
+	for _, pod := range pods.Items {
+		// Skip daemon sets if ignoreDaemonSets is true
+		if req.IgnoreDaemonSets && pod.OwnerReferences != nil {
+			for _, owner := range pod.OwnerReferences {
+				if owner.Kind == "DaemonSet" {
+					continue
+				}
+			}
+		}
+
+		// Create eviction
+		eviction := &policyv1.Eviction{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      pod.Name,
+				Namespace: pod.Namespace,
+			},
+		}
+
+		// Set grace period if specified
+		if req.GracePeriod > 0 {
+			gracePeriodSeconds := int64(req.GracePeriod)
+			eviction.DeleteOptions = &metav1.DeleteOptions{
+				GracePeriodSeconds: &gracePeriodSeconds,
+			}
+		}
+
+		// Perform eviction
+		err := client.CoreV1().Pods(pod.Namespace).EvictV1(c.Request.Context(), eviction)
+		if err != nil {
+			h.logger.WithError(err).WithField("node", name).WithField("pod", pod.Name).Error("Failed to evict pod")
+			failedPods = append(failedPods, fmt.Sprintf("%s/%s", pod.Namespace, pod.Name))
+		} else {
+			evictedPods = append(evictedPods, fmt.Sprintf("%s/%s", pod.Namespace, pod.Name))
+		}
+	}
+
+	// Mark node as unschedulable
+	patch := []byte(`{"spec":{"unschedulable":true}}`)
+	_, err = client.CoreV1().Nodes().Patch(
+		c.Request.Context(),
+		name,
+		k8stypes.StrategicMergePatchType,
+		patch,
+		metav1.PatchOptions{},
+	)
+	if err != nil {
+		h.logger.WithError(err).WithField("node", name).Error("Failed to mark node as unschedulable during drain")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	response := gin.H{
+		"message":      "Node drain completed",
+		"evictedPods":  evictedPods,
+		"failedPods":   failedPods,
+		"totalPods":    len(pods.Items),
+		"evictedCount": len(evictedPods),
+		"failedCount":  len(failedPods),
+	}
+
+	if len(failedPods) > 0 {
+		c.JSON(http.StatusPartialContent, response)
+	} else {
+		c.JSON(http.StatusOK, response)
+	}
+}
+
+// CheckNodeActionPermission checks if the user has permission to perform node actions
+func (h *NodesHandler) CheckNodeActionPermission(c *gin.Context) {
+	client, err := h.getClientAndConfig(c)
+	if err != nil {
+		h.logger.WithError(err).Error("Failed to get client for node action permission check")
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	action := c.Query("action")
+	nodeName := c.Query("nodeName")
+
+	if action == "" || nodeName == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "action and nodeName parameters are required"})
+		return
+	}
+
+	// Define required permissions for each action
+	var requiredVerbs []string
+	switch action {
+	case "cordon", "uncordon":
+		requiredVerbs = []string{"patch", "update"}
+	case "drain":
+		requiredVerbs = []string{"patch", "update", "delete"}
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported action"})
+		return
+	}
+
+	permissions := make(map[string]bool)
+
+	for _, verb := range requiredVerbs {
+		accessReview := &authorizationv1.SelfSubjectAccessReview{
+			Spec: authorizationv1.SelfSubjectAccessReviewSpec{
+				ResourceAttributes: &authorizationv1.ResourceAttributes{
+					Group:    "",
+					Resource: "nodes",
+					Verb:     verb,
+					Name:     nodeName,
+				},
+			},
+		}
+
+		result, err := client.AuthorizationV1().SelfSubjectAccessReviews().Create(c.Request.Context(), accessReview, metav1.CreateOptions{})
+		if err != nil {
+			h.logger.WithError(err).Errorf("Failed to check %s permission for node action", verb)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to check %s permissions: %v", verb, err)})
+			return
+		}
+
+		permissions[verb] = result.Status.Allowed
+	}
+
+	// For drain action, also check pod permissions
+	if action == "drain" {
+		podPermissions := make(map[string]bool)
+		podVerbs := []string{"delete"}
+
+		for _, verb := range podVerbs {
+			accessReview := &authorizationv1.SelfSubjectAccessReview{
+				Spec: authorizationv1.SelfSubjectAccessReviewSpec{
+					ResourceAttributes: &authorizationv1.ResourceAttributes{
+						Group:    "",
+						Resource: "pods",
+						Verb:     verb,
+					},
+				},
+			}
+
+			result, err := client.AuthorizationV1().SelfSubjectAccessReviews().Create(c.Request.Context(), accessReview, metav1.CreateOptions{})
+			if err != nil {
+				h.logger.WithError(err).Errorf("Failed to check %s permission for pods", verb)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to check %s permissions for pods: %v", verb, err)})
+				return
+			}
+
+			podPermissions[verb] = result.Status.Allowed
+		}
+
+		// User needs all permissions to drain
+		canDrain := true
+		for _, allowed := range permissions {
+			if !allowed {
+				canDrain = false
+				break
+			}
+		}
+		for _, allowed := range podPermissions {
+			if !allowed {
+				canDrain = false
+				break
+			}
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"allowed":        canDrain,
+			"action":         action,
+			"nodeName":       nodeName,
+			"permissions":    permissions,
+			"podPermissions": podPermissions,
+		})
+		return
+	}
+
+	// For cordon/uncordon, user needs all required permissions
+	canPerform := true
+	for _, allowed := range permissions {
+		if !allowed {
+			canPerform = false
+			break
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"allowed":     canPerform,
+		"action":      action,
+		"nodeName":    nodeName,
+		"permissions": permissions,
+	})
 }

@@ -15,6 +15,7 @@ import { RootState } from "@/redux/store";
 
 import { ScaleDeployments } from "../../MiscDetailsContainer/Deployments/ScaleDeployments";
 import { CronJobTrigger } from "../../MiscDetailsContainer/CronJobs/CronJobTrigger";
+import NodeActions from "../../MiscDetailsContainer/NodeActions";
 import TableDelete from "../../Table/TableDelete";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
@@ -147,6 +148,14 @@ const KwDetails = () => {
                   {
                     resourcekind === 'cronjobs' && 
                     <CronJobTrigger resourcename={resourcename} queryParams={new URLSearchParams(queryParamsObj).toString()}/>
+                  }
+                  {
+                    resourcekind === 'nodes' && 
+                    <NodeActions 
+                      nodeName={resourcename} 
+                      config={config} 
+                      cluster={cluster}
+                    />
                   }
                   {/* Delete on details page reuses the same component with empty selectedRows; it will use params */}
                   <TableDelete selectedRows={[]} />
