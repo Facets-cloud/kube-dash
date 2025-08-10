@@ -411,6 +411,7 @@ func (s *Server) setupRoutes() {
 		api.GET("/pods", s.podsHandler.GetPodsSSE)
 		api.GET("/deployments", s.deploymentsHandler.GetDeploymentsSSE)
 		api.POST("/deployments/:name/scale", s.deploymentsHandler.ScaleDeployment)
+		api.POST("/deployments/:name/restart", s.deploymentsHandler.RestartDeployment)
 		api.GET("/daemonsets", s.daemonSetsHandler.GetDaemonSetsSSE)
 		api.GET("/statefulsets", s.statefulSetsHandler.GetStatefulSetsSSE)
 		api.GET("/replicasets", s.replicaSetsHandler.GetReplicaSetsSSE)

@@ -1,8 +1,11 @@
 package workloads
 
 import (
+	"context"
 	"fmt"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/Facets-cloud/kube-dash/internal/api/transformers"
 	"github.com/Facets-cloud/kube-dash/internal/api/types"
@@ -78,6 +81,176 @@ func (h *DeploymentsHandler) ScaleDeployment(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Deployment Scaled"})
+}
+
+// RestartDeployment restarts all pods in a deployment by adding a restart annotation
+func (h *DeploymentsHandler) RestartDeployment(c *gin.Context) {
+	client, err := h.getClientAndConfig(c)
+	if err != nil {
+		h.logger.WithError(err).Error("Failed to get client for restarting deployment")
+		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error(), "code": http.StatusBadRequest})
+		return
+	}
+
+	name := c.Param("name")
+	namespace := c.Query("namespace")
+	if namespace == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "namespace parameter is required", "code": http.StatusBadRequest})
+		return
+	}
+
+	var body struct {
+		RestartType string `json:"restartType"` // "rolling" or "recreate"
+	}
+	if err := c.BindJSON(&body); err != nil {
+		// Default to rolling restart if no body provided
+		body.RestartType = "rolling"
+	}
+
+	// Validate restart type
+	if body.RestartType != "rolling" && body.RestartType != "recreate" {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "restartType must be 'rolling' or 'recreate'", "code": http.StatusBadRequest})
+		return
+	}
+
+	if body.RestartType == "rolling" {
+		// Rolling restart: Add restart annotation to trigger gradual pod replacement
+		err = h.performRollingRestart(client, name, namespace)
+		if err != nil {
+			h.logger.WithError(err).WithField("deployment", name).WithField("namespace", namespace).Error("Failed to perform rolling restart")
+			c.JSON(http.StatusBadRequest, gin.H{"message": err.Error(), "code": http.StatusBadRequest})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "Rolling restart initiated - pods will be replaced gradually while maintaining availability"})
+	} else {
+		// Recreate restart: Set replicas to 0, then back to original count
+		err = h.performRecreateRestart(client, name, namespace)
+		if err != nil {
+			h.logger.WithError(err).WithField("deployment", name).WithField("namespace", namespace).Error("Failed to perform recreate restart")
+			c.JSON(http.StatusBadRequest, gin.H{"message": err.Error(), "code": http.StatusBadRequest})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "Recreate restart initiated - pods will be restarted in the background"})
+	}
+}
+
+// performRollingRestart performs a rolling restart by adding a restart annotation
+func (h *DeploymentsHandler) performRollingRestart(client *kubernetes.Clientset, name, namespace string) error {
+	// Get the current deployment
+	deployment, err := client.AppsV1().Deployments(namespace).Get(context.Background(), name, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to get deployment: %w", err)
+	}
+
+	// Add restart annotation to trigger gradual pod replacement
+	if deployment.Spec.Template.Annotations == nil {
+		deployment.Spec.Template.Annotations = make(map[string]string)
+	}
+	deployment.Spec.Template.Annotations["kubectl.kubernetes.io/restartedAt"] = metav1.Now().Format("2006-01-02T15:04:05Z07:00")
+
+	// Update the deployment
+	_, err = client.AppsV1().Deployments(namespace).Update(context.Background(), deployment, metav1.UpdateOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to update deployment: %w", err)
+	}
+
+	return nil
+}
+
+// performRecreateRestart performs a recreate restart by scaling to 0 then back to original count
+func (h *DeploymentsHandler) performRecreateRestart(client *kubernetes.Clientset, name, namespace string) error {
+	// Get the current deployment to get original replica count
+	deployment, err := client.AppsV1().Deployments(namespace).Get(context.Background(), name, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to get deployment: %w", err)
+	}
+
+	originalReplicas := int32(1)
+	if deployment.Spec.Replicas != nil {
+		originalReplicas = *deployment.Spec.Replicas
+	}
+
+	// Scale down to 0 with retry mechanism
+	err = h.scaleDeploymentWithRetry(client, name, namespace, 0)
+	if err != nil {
+		return fmt.Errorf("failed to scale down deployment: %w", err)
+	}
+
+	// Start the scale-up process in a goroutine to avoid blocking the response
+	go func() {
+		// Wait a moment for pods to terminate
+		time.Sleep(3 * time.Second)
+
+		// Scale back up to original replicas with retry mechanism
+		err := h.scaleDeploymentWithRetry(client, name, namespace, originalReplicas)
+		if err != nil {
+			h.logger.WithError(err).WithFields(map[string]interface{}{
+				"deployment": name,
+				"namespace":  namespace,
+				"replicas":   originalReplicas,
+			}).Error("Failed to scale up deployment during recreate restart")
+		} else {
+			h.logger.WithFields(map[string]interface{}{
+				"deployment": name,
+				"namespace":  namespace,
+				"replicas":   originalReplicas,
+			}).Info("Successfully completed recreate restart scale-up")
+		}
+	}()
+
+	return nil
+}
+
+// scaleDeploymentWithRetry scales a deployment with retry mechanism for handling "object has been modified" errors
+func (h *DeploymentsHandler) scaleDeploymentWithRetry(client *kubernetes.Clientset, name, namespace string, replicas int32) error {
+	maxRetries := 5
+	backoffDuration := 100 * time.Millisecond
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		// Get the latest scale object
+		scale, err := client.AppsV1().Deployments(namespace).GetScale(context.Background(), name, metav1.GetOptions{})
+		if err != nil {
+			return fmt.Errorf("failed to get deployment scale: %w", err)
+		}
+
+		// Update the replicas
+		scale.Spec.Replicas = replicas
+
+		// Try to update the scale
+		_, err = client.AppsV1().Deployments(namespace).UpdateScale(context.Background(), name, scale, metav1.UpdateOptions{})
+		if err == nil {
+			// Success, no need to retry
+			return nil
+		}
+
+		// Check if it's a conflict error (object has been modified)
+		if isConflictError(err) {
+			if attempt < maxRetries-1 {
+				// Wait before retrying with exponential backoff
+				time.Sleep(backoffDuration)
+				backoffDuration *= 2 // Exponential backoff
+				continue
+			}
+		}
+
+		// If it's not a conflict error or we've exhausted retries, return the error
+		return fmt.Errorf("failed to scale deployment after %d attempts: %w", maxRetries, err)
+	}
+
+	return fmt.Errorf("failed to scale deployment after %d attempts", maxRetries)
+}
+
+// isConflictError checks if the error is a conflict error (object has been modified)
+func isConflictError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	// Check if the error message contains conflict-related keywords
+	errMsg := err.Error()
+	return strings.Contains(errMsg, "the object has been modified") ||
+		strings.Contains(errMsg, "conflict") ||
+		strings.Contains(errMsg, "409")
 }
 
 // getClientAndConfig gets the Kubernetes client and config for the given config ID and cluster

@@ -1,4 +1,5 @@
 import DeploymentScaleSlice from '@/data/Workloads/Deployments/DeploymentScaleSlice';
+import DeploymentRestartSlice from '@/data/Workloads/Deployments/DeploymentRestartSlice';
 import CronJobTriggerSlice from '@/data/Workloads/CronJobs/CronJobTriggerSlice';
 import JobPodsSlice from '@/data/Workloads/Jobs/JobPodsSlice';
 import CronJobJobsSlice from '@/data/Workloads/CronJobs/CronJobJobsSlice';
@@ -176,6 +177,7 @@ const store = configureStore({
     clusterEvents: clusterEventsListSlice,
     cloudShell: cloudShellSlice,
     deploymentScale: DeploymentScaleSlice,
+    deploymentRestart: DeploymentRestartSlice,
     cronJobTrigger: CronJobTriggerSlice,
     jobPods: JobPodsSlice,
     cronJobJobs: CronJobJobsSlice,

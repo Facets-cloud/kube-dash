@@ -14,6 +14,7 @@ import { PodExec } from "../../MiscDetailsContainer/PodExec";
 import { RootState } from "@/redux/store";
 
 import { ScaleDeployments } from "../../MiscDetailsContainer/Deployments/ScaleDeployments";
+import { RestartDeployments } from "../../MiscDetailsContainer/Deployments/RestartDeployments";
 import { CronJobTrigger } from "../../MiscDetailsContainer/CronJobs/CronJobTrigger";
 import NodeActions from "../../MiscDetailsContainer/NodeActions";
 import TableDelete from "../../Table/TableDelete";
@@ -143,7 +144,10 @@ const KwDetails = () => {
                 <div className="ml-auto flex items-center gap-2">
                   {
                     resourcekind === 'deployments' && 
-                    <ScaleDeployments resourcename={resourcename} queryParams={new URLSearchParams(queryParamsObj).toString()}/>
+                    <>
+                      <RestartDeployments resourcename={resourcename} queryParams={new URLSearchParams(queryParamsObj).toString()}/>
+                      <ScaleDeployments resourcename={resourcename} queryParams={new URLSearchParams(queryParamsObj).toString()}/>
+                    </>
                   }
                   {
                     resourcekind === 'cronjobs' && 
