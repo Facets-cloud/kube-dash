@@ -102,8 +102,8 @@ func transformCRD(crd unstructured.Unstructured) CustomResourceDefinition {
 		}
 	}
 
-	// Extract additional printer columns
-	var additionalPrinterColumns []AdditionalPrinterColumn
+	// Extract additional printer columns (ensure non-nil slice so JSON encodes as [])
+	additionalPrinterColumns := make([]AdditionalPrinterColumn, 0)
 	if additionalPrinterColumnsVal, exists := spec["additionalPrinterColumns"]; exists {
 		if columns, ok := additionalPrinterColumnsVal.([]interface{}); ok {
 			for _, col := range columns {

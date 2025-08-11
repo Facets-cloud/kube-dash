@@ -163,6 +163,9 @@ var resourceMapping = map[string]struct {
 	"runtimeclasses":       {schema.GroupVersionResource{Group: "node.k8s.io", Version: "v1", Resource: "runtimeclasses"}, false},
 	"storageclasses":       {schema.GroupVersionResource{Group: "storage.k8s.io", Version: "v1", Resource: "storageclasses"}, false},
 
+	// APIExtensions v1
+	"customresourcedefinitions": {schema.GroupVersionResource{Group: "apiextensions.k8s.io", Version: "v1", Resource: "customresourcedefinitions"}, false},
+
 	// RBAC
 	"serviceaccounts":     {schema.GroupVersionResource{Group: "", Version: "v1", Resource: "serviceaccounts"}, true},
 	"roles":               {schema.GroupVersionResource{Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "roles"}, true},

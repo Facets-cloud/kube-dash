@@ -264,8 +264,9 @@ const KwDetails = () => {
                           name={resourcename}
                           configName={config}
                           clusterName={cluster}
-                          instanceType={resourcekind === 'pods' ? 'pod' : resourcekind}
+                          instanceType={resourceInitialData.label === 'Custom Resources' ? (namespace ? 'customresources' : 'customresource') : (resourcekind === 'pods' ? 'pod' : resourcekind)}
                           namespace={namespace || ''}
+                          extraQuery={resourceInitialData.label === 'Custom Resources' ? '&' + new URLSearchParams({ group, kind, resource, version }).toString() : ''}
                         />
                       </TabsContent>
                     </>

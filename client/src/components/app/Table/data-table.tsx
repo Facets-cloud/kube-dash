@@ -27,6 +27,7 @@ import { DataTableToolbar } from "@/components/app/Table/TableToolbar";
 import { RootState } from "@/redux/store";
 
 import { useAppSelector } from "@/redux/hooks";
+import { CUSTOM_RESOURCES_LIST_ENDPOINT } from "@/constants";
 
 type DataTableProps<TData, TValue> = {
   columns: ColumnDef<TData, TValue>[];
@@ -119,17 +120,22 @@ export function DataTable<TData, TValue>({
   });
 
   const getIdAndSetClass = (shouldSetClass: boolean, id: string) => {
-    if (shouldSetClass) {
+    const safeId = typeof id === 'string' ? id : '';
+    if (shouldSetClass && safeId) {
       setTimeout(() => {
-        document.getElementById(id)?.classList.remove("table-row-bg");
+        document.getElementById(safeId)?.classList.remove("table-row-bg");
       }, 2000);
-      document.getElementById(id)?.classList.add("table-row-bg");
+      document.getElementById(safeId)?.classList.add("table-row-bg");
     }
-    return id;
+    return safeId;
   };
   useEffect(() => {
     setRowSelection({});
   }, [instanceType]);
+
+  const emptyMessage = instanceType === CUSTOM_RESOURCES_LIST_ENDPOINT
+    ? 'No resources found for this Custom Resource Definition.'
+    : 'No results.';
 
   return (
     <>
@@ -171,7 +177,13 @@ export function DataTable<TData, TValue>({
               table.getRowModel().rows.map((row) => (
                 <TableRow
                   key={row.id}
-                  id={getIdAndSetClass(row.original.hasUpdated, row.original.name)}
+                  id={getIdAndSetClass(
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    (row.original as any)?.hasUpdated,
+                    // Prefer metadata.name for objects that don't have top-level name
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    (row.original as any)?.name || (row.original as any)?.metadata?.name || ''
+                  )}
                   data-state={row.getIsSelected() && 'selected'}
                 >
                   {row.getVisibleCells().map((cell) => (
@@ -190,7 +202,7 @@ export function DataTable<TData, TValue>({
                   colSpan={columns.length}
                   className="text-center"
                 >
-                  No results.
+                  {emptyMessage}
                 </TableCell>
               </TableRow>
             )}

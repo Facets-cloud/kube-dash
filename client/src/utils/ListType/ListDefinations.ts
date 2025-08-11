@@ -471,16 +471,29 @@ const customResourceDefinitionsColumnConfig = (config: string, cluster: string) 
   showNamespaceFilter: false
 });
 
-const customResourcesColumnConfig = (additionalPrinterColumns: CustomResourcesPrinterColumns[] = [], config: string, cluster: string, loading: boolean, group?: string, kind?: string, resource?: string, version?: string) => ({
+const customResourcesColumnConfig = (
+  additionalPrinterColumns: CustomResourcesPrinterColumns[] = [],
+  config: string,
+  cluster: string,
+  loading: boolean,
+  group?: string,
+  kind?: string,
+  resource?: string,
+  version?: string
+) => ({
   headersList: [
-    { title: 'Select', accessorKey: 'select', enableSorting: false, },
-    ...additionalPrinterColumns.map((columns) => {
-      return {
+    { title: 'Select', accessorKey: 'select', enableSorting: false },
+    // Always include Namespace and Name for navigation, even if CRD doesn't define them
+    { title: 'Namespace', accessorKey: loading ? '' : 'metadata.namespace', enableGlobalFilter: true },
+    { title: 'Name', accessorKey: loading ? '' : 'metadata.name', enableGlobalFilter: true },
+    // Append CRD-provided additional printer columns, skipping duplicates
+    ...additionalPrinterColumns
+      .filter((c) => c.name !== 'Name' && c.name !== 'Namespace')
+      .map((columns) => ({
         title: columns.name,
         accessorKey: loading ? '' : columns.jsonPath.slice(1),
-        ...(columns.name === 'Name' || columns.name === 'Namespace' ? {enableGlobalFilter: true}: {})
-      };
-    })
+        ...(columns.name === 'Name' || columns.name === 'Namespace' ? { enableGlobalFilter: true } : {}),
+      })),
   ],
   queryParams: {
     cluster,
@@ -490,7 +503,7 @@ const customResourcesColumnConfig = (additionalPrinterColumns: CustomResourcesPr
     resource,
     version
   },
-  showNamespaceFilter: additionalPrinterColumns.filter(({ name }) => name === 'Namespace').length > 0
+  showNamespaceFilter: true
 });
 
 // Helm

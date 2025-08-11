@@ -110,6 +110,8 @@ const TableCells = <T extends ClusterDetails>({
       defaultQueryParams.cluster = clusterName;
       link = `${configName}/details?${toQueryParams(defaultQueryParams)}`;
     } else {
+      // For custom resources list, ensure cluster param is included in details route
+      defaultQueryParams.cluster = clusterName;
       link = `${configName}/details?${toQueryParams(defaultQueryParams)}&${queryParams}`;
     }
     return <NameCell

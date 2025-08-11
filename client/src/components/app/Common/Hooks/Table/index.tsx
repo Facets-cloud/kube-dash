@@ -110,19 +110,22 @@ const CreateTable = <T extends ClusterDetails, C extends HeaderList>({
     }
   };
 
+  // Always generate columns to maintain consistent hook order across renders
+  const columns = useGenerateColumns<T, C>({
+    clusterName,
+    configName,
+    loading,
+    headersList,
+    instanceType,
+    count,
+    queryParams: new URLSearchParams(queryParmObject).toString()
+  });
+
   return (
     <div className="col-span-7 h-full">
       <div className="list-table-container">
         <DataTable<T, C>
-          columns={useGenerateColumns<T, C>({
-            clusterName,
-            configName,
-            loading,
-            headersList,
-            instanceType,
-            count,
-            queryParams: new URLSearchParams(queryParmObject).toString()
-          })}
+          columns={columns}
           data={loading ? defaultSkeletonRow() : data}
           showNamespaceFilter={showNamespaceFilter}
           tableWidthCss={cn('list-table-max-width-height', getTableClasses())}

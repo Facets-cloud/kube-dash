@@ -60,14 +60,14 @@ export function DataTableToolbar<TData>({
 
           <Kbd inline={false}>/</Kbd>
         </div>
-        {showNamespaceFilter && !loading && namespaces && namespaces.length > 0 && (
+        {showNamespaceFilter && !loading && namespaces && Array.isArray(namespaces) && namespaces.length > 0 && (
           <DataTableFacetedFilter
             column={table.getColumn("Namespace")}
             title="Namespaces"
             options={namespacesFilter(namespaces)}
           />
         )}
-        {isFiltered && showNamespaceFilter && !loading && namespaces && namespaces.length > 0 && (
+        {isFiltered && showNamespaceFilter && !loading && namespaces && Array.isArray(namespaces) && namespaces.length > 0 && (
           <Button
             variant="ghost"
             onClick={() => { table.resetColumnFilters(); dispatch(resetFilterNamespace()); }}

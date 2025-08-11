@@ -94,17 +94,25 @@ const EnhancedYamlEditor = memo(function ({
       
       setCheckingPermission(true);
       try {
+        const permissionResourceKind = instanceType.startsWith('customresource') ? 'customresources' : instanceType;
+        const extraParams = (() => {
+          if (extraQuery) {
+            const params = new URLSearchParams(extraQuery);
+            return {
+              group: params.get('group') || '',
+              resource: params.get('resource') || '',
+            };
+          }
+          return { group: '', resource: '' };
+        })();
         const result = await checkYamlEditPermission({
           config: configName,
           cluster: clusterName,
-          resourcekind: instanceType,
+          resourcekind: permissionResourceKind,
           namespace,
           resourcename: name,
-          // Add custom resource parameters if needed
-          ...(instanceType.includes('customresources') && extraQuery ? {
-            group: new URLSearchParams(extraQuery).get('group') || '',
-            resource: new URLSearchParams(extraQuery).get('resource') || '',
-          } : {}),
+          // Add custom resource parameters if needed (for both customresources/customresource)
+          ...(((instanceType.includes('customresources') || instanceType.includes('customresource')) && extraQuery) ? extraParams : {}),
         });
         setPermissionResult(result);
       } catch (error) {

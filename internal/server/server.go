@@ -323,6 +323,12 @@ func (s *Server) setupRoutes() {
 		api.GET("/customresourcedefinitions/:name", s.customResourceDefinitionsHandler.GetCustomResourceDefinition)
 		api.GET("/customresources", s.customResourcesHandler.GetCustomResourcesSSE)
 		api.GET("/customresources/:namespace/:name", s.customResourcesHandler.GetCustomResource)
+		api.GET("/customresources/:namespace/:name/yaml", s.customResourcesHandler.GetCustomResourceYAML)
+		api.GET("/customresources/:namespace/:name/events", s.customResourcesHandler.GetCustomResourceEvents)
+		// Cluster-scoped CR routes use singular base to avoid conflict with namespaced routes
+		api.GET("/customresource/:name", s.customResourcesHandler.GetCustomResource)
+		api.GET("/customresource/:name/yaml", s.customResourcesHandler.GetCustomResourceYAMLByName)
+		api.GET("/customresource/:name/events", s.customResourcesHandler.GetCustomResourceEventsByName)
 
 		// Generic delete endpoint (bulk)
 		api.DELETE("/:resourcekind", s.baseResourcesHandler.DeleteResources)
