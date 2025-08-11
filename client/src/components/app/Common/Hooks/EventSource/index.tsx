@@ -21,12 +21,15 @@ const useEventSource = <T = any>({url, sendMessage, onConnectionStatusChange, on
   const maxReconnectAttempts = 3; // Reduced from 5 to 3 for better UX
   const baseReconnectDelay = 2000; // Increased from 1000 to 2000ms
   
-  // Determine if this is a Helm releases endpoint
+  // Determine if this is a Helm releases endpoint or configuration resource
   const isHelmReleases = url.includes('helmreleases');
   const isHelmReleaseDetails = url.includes('helmreleases') && !url.includes('history');
+  const isConfigResource = url.includes('secrets') || url.includes('configmaps') || url.includes('hpa') || 
+                           url.includes('limitranges') || url.includes('resourcequotas') || url.includes('priorityclasses') ||
+                           url.includes('runtimeclasses') || url.includes('poddisruptionbudgets');
   
   // Optimized timeouts based on Phase 2 server improvements
-  const connectionTimeout = isHelmReleases ? 90000 : 15000; // 90 seconds for Helm, 15 seconds for others
+  const connectionTimeout = isHelmReleases ? 90000 : (isConfigResource ? 60000 : 15000); // 90s for Helm, 60s for config resources, 15s for others
   const hasConfigErrorRef = useRef(false);
   const hasPermissionErrorRef = useRef(false); // New ref to track permission errors specifically
   const dispatch = useAppDispatch();

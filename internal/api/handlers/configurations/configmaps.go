@@ -1,8 +1,10 @@
 package configurations
 
 import (
+	"context"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/Facets-cloud/kube-dash/internal/api/transformers"
 	"github.com/Facets-cloud/kube-dash/internal/api/types"
@@ -99,7 +101,11 @@ func (h *ConfigMapsHandler) GetConfigMapsSSE(c *gin.Context) {
 
 	// Function to fetch and transform configmaps data
 	fetchConfigMaps := func() (interface{}, error) {
-		configMapList, err := client.CoreV1().ConfigMaps(namespace).List(c.Request.Context(), metav1.ListOptions{})
+		// Use context.Background() with timeout instead of request context to avoid cancellation
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		configMapList, err := client.CoreV1().ConfigMaps(namespace).List(ctx, metav1.ListOptions{})
 		if err != nil {
 			return nil, err
 		}
