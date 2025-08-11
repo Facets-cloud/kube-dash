@@ -488,12 +488,14 @@ const customResourcesColumnConfig = (
     { title: 'Name', accessorKey: loading ? '' : 'metadata.name', enableGlobalFilter: true },
     // Append CRD-provided additional printer columns, skipping duplicates
     ...additionalPrinterColumns
-      .filter((c) => c.name !== 'Name' && c.name !== 'Namespace')
+      .filter((c) => !['Name', 'Namespace', 'Age', 'AGE'].includes(c.name))
       .map((columns) => ({
         title: columns.name,
         accessorKey: loading ? '' : columns.jsonPath.slice(1),
         ...(columns.name === 'Name' || columns.name === 'Namespace' ? { enableGlobalFilter: true } : {}),
       })),
+    // Always include Age using creation timestamp for consistent UX
+    { title: 'Age', accessorKey: loading ? '' : 'metadata.creationTimestamp' },
   ],
   queryParams: {
     cluster,
