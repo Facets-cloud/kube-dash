@@ -111,8 +111,8 @@ const CreateTable = <T extends ClusterDetails, C extends HeaderList>({
   };
 
   return (
-    <div className="col-span-7">
-      <div className="h-full">
+    <div className="col-span-7 h-full">
+      <div className="list-table-container">
         <DataTable<T, C>
           columns={useGenerateColumns<T, C>({
             clusterName,
@@ -125,7 +125,7 @@ const CreateTable = <T extends ClusterDetails, C extends HeaderList>({
           })}
           data={loading ? defaultSkeletonRow() : data}
           showNamespaceFilter={showNamespaceFilter}
-          tableWidthCss={cn('list-table-max-width-height', 'h-screen', getTableClasses())}
+          tableWidthCss={cn('list-table-max-width-height', getTableClasses())}
           instanceType={instanceType}
           loading={loading}
           connectionStatus={connectionStatus}

@@ -145,9 +145,9 @@ export function DataTable<TData, TValue>({
       </div>
       }
       
-      <div className={`border border-x-0 overflow-auto ${tableWidthCss} `}>
-
-        <Table>
+      <div className={`border border-x-0 list-table-container ${tableWidthCss}`}>
+        <div className="list-table-scrollable">
+          <Table>
           <TableHeader className="bg-muted/50">
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
@@ -196,6 +196,7 @@ export function DataTable<TData, TValue>({
             )}
           </TableBody>
         </Table>
+        </div>
       </div>
     </>
   );
