@@ -583,6 +583,7 @@ func (s *Server) setupRoutes() {
 		api.GET("/persistentvolumeclaims/:namespace/:name", s.persistentVolumeClaimsHandler.GetPVC)
 		api.GET("/persistentvolumeclaims/:namespace/:name/yaml", s.persistentVolumeClaimsHandler.GetPVCYAML)
 		api.GET("/persistentvolumeclaims/:namespace/:name/events", s.persistentVolumeClaimsHandler.GetPVCEvents)
+		api.PATCH("/persistentvolumeclaims/:namespace/:name/scale", s.persistentVolumeClaimsHandler.ScalePVC)
 		api.GET("/persistentvolumeclaim/:name", s.persistentVolumeClaimsHandler.GetPVCByName)
 		api.GET("/persistentvolumeclaim/:name/yaml", s.persistentVolumeClaimsHandler.GetPVCYAMLByName)
 		api.GET("/persistentvolumeclaim/:name/events", s.persistentVolumeClaimsHandler.GetPVCEventsByName)

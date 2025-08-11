@@ -91,6 +91,7 @@ import cloudShellSlice from '@/data/CloudShell/CloudShellSlice';
 import permissionErrorsSlice from '@/data/PermissionErrors/PermissionErrorsSlice';
 import listTableRefreshSlice from '@/data/Misc/ListTableRefreshSlice';
 import nodeActionsSlice from '@/data/Clusters/Nodes/NodeActionsSlice';
+import persistentVolumeClaimScaleSlice from '@/data/Storages/PersistentVolumeClaims/PersistentVolumeClaimScaleSlice';
 
 const store = configureStore({
   reducer: {
@@ -186,7 +187,8 @@ const store = configureStore({
     helmReleaseResources: helmReleaseResourcesReducer,
     permissionErrors: permissionErrorsSlice,
     listTableRefresh: listTableRefreshSlice,
-    nodeActions: nodeActionsSlice
+    nodeActions: nodeActionsSlice,
+    persistentVolumeClaimScale: persistentVolumeClaimScaleSlice
   },
 });
 

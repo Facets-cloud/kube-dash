@@ -7,6 +7,7 @@ import { ReplicaSetDetailsContainer } from "@/components/app/MiscDetailsContaine
 import { JobDetailsContainer } from "@/components/app/MiscDetailsContainer/Jobs/JobDetailsContainer";
 import { CronJobDetailsContainer } from "@/components/app/MiscDetailsContainer/CronJobs/CronJobDetailsContainer";
 import { HelmReleaseOverview } from '@/components/app/MiscDetailsContainer/HelmReleaseOverview';
+import PersistentVolumeClaimDetailsContainer from '@/components/app/MiscDetailsContainer/PersistentVolumeClaimDetailsContainer';
 
 import { RootState } from "@/redux/store";
 import { useAppSelector } from "@/redux/hooks";
@@ -160,7 +161,7 @@ const useDetailsWrapper = ({ loading, resourcekind }: DetailsWapperProps) => {
     return { ...getEndpointDetailsConfig(endpointDetails, loading), miscComponent: <EndpointDetailsContainer/> };
   }
   if (resourcekind === PERSISTENT_VOLUME_CLAIMS_ENDPOINT) {
-    return { ...getPersistentVolumeClaimDetailsConfig(persistentVolumeClaimDetails, loading), miscComponent: <></> };
+    return { ...getPersistentVolumeClaimDetailsConfig(persistentVolumeClaimDetails, loading), miscComponent: <PersistentVolumeClaimDetailsContainer/> };
   }
   if (resourcekind === PERSISTENT_VOLUMES_ENDPOINT) {
     return { ...getPersistentVolumeDetailsConfig(persistentVolumeDetails, loading), miscComponent: <></> };

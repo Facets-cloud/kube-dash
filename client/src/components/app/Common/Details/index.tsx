@@ -8,7 +8,7 @@ import { Events } from "../../Details/Events";
 import FourOFourError from "../../Errors/404Error";
 import { Loader } from "../../Loader";
 import { Overview } from "../../Details/Overview";
-import { PODS_ENDPOINT, HELM_RELEASES_ENDPOINT } from "@/constants";
+import { PODS_ENDPOINT, HELM_RELEASES_ENDPOINT, PERSISTENT_VOLUME_CLAIMS_ENDPOINT } from "@/constants";
 import { PodLogs } from "../../MiscDetailsContainer";
 import { PodExec } from "../../MiscDetailsContainer/PodExec";
 import { PortForwardDialog } from "../../MiscDetailsContainer/PortForward/PortForwardDialog";
@@ -20,6 +20,7 @@ import { RestartDeployments } from "../../MiscDetailsContainer/Deployments/Resta
 import { CronJobTrigger } from "../../MiscDetailsContainer/CronJobs/CronJobTrigger";
 import NodeActions from "../../MiscDetailsContainer/NodeActions";
 import TableDelete from "../../Table/TableDelete";
+import ScalePVC from "../ScalePVC";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 
@@ -43,6 +44,7 @@ const KwDetails = () => {
   const { config } = appRoute.useParams();
   const { cluster, resourcekind, resourcename, group = '', kind = '', resource = '', version = '', namespace } = kwDetails.useSearch();
   const { podDetails } = useAppSelector((state: RootState) => state.podDetails);
+  const { persistentVolumeClaimDetails } = useAppSelector((state: RootState) => state.persistentVolumeClaimDetails);
   const { clusters, loading: clustersLoading } = useAppSelector((state: RootState) => state.clusters);
   const queryParamsObj: Record<string, string> = { config, cluster, namespace: namespace || '' };
   const hasShownConfigNotFoundToast = useRef(false);
@@ -175,6 +177,15 @@ const KwDetails = () => {
                     />
                   }
                   {/* Delete on details page reuses the same component with empty selectedRows; it will use params */}
+                  {resourcekind === PERSISTENT_VOLUME_CLAIMS_ENDPOINT && (
+                    <ScalePVC
+                      configName={config}
+                      clusterName={cluster}
+                      namespace={namespace || ''}
+                      name={resourcename}
+                      currentSize={String(persistentVolumeClaimDetails?.spec?.resources?.requests?.storage || '0')}
+                    />
+                  )}
                   <TableDelete selectedRows={[]} />
                 </div>
 

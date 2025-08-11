@@ -12,6 +12,8 @@ import (
 	"github.com/Facets-cloud/kube-dash/pkg/logger"
 
 	"github.com/gin-gonic/gin"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
@@ -251,4 +253,75 @@ func (h *PersistentVolumeClaimsHandler) GetPVCEvents(c *gin.Context) {
 
 	name := c.Param("name")
 	h.eventsHandler.GetResourceEvents(c, client, "PersistentVolumeClaim", name, h.sseHandler.SendSSEResponse)
+}
+
+// ScalePVC scales a persistent volume claim to a new size
+func (h *PersistentVolumeClaimsHandler) ScalePVC(c *gin.Context) {
+	client, err := h.getClientAndConfig(c)
+	if err != nil {
+		h.logger.WithError(err).Error("Failed to get client for PVC scaling")
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	namespace := c.Param("namespace")
+	name := c.Param("name")
+
+	// Parse request body
+	var request struct {
+		Size string `json:"size" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&request); err != nil {
+		h.logger.WithError(err).Error("Failed to parse PVC scale request")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	// Get current PVC
+	pvc, err := client.CoreV1().PersistentVolumeClaims(namespace).Get(c.Request.Context(), name, metav1.GetOptions{})
+	if err != nil {
+		h.logger.WithError(err).WithField("pvc", name).WithField("namespace", namespace).Error("Failed to get PVC for scaling")
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Get current size
+	currentSize := pvc.Spec.Resources.Requests.Storage()
+	if currentSize == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Current PVC size cannot be determined"})
+		return
+	}
+
+	// Parse new size
+	newSize, err := resource.ParseQuantity(request.Size)
+	if err != nil {
+		h.logger.WithError(err).Error("Failed to parse new size")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid size format"})
+		return
+	}
+
+	// Validate that new size is greater than current size
+	if newSize.Cmp(*currentSize) <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "New size must be greater than current size"})
+		return
+	}
+
+	// Update PVC spec with new size
+	pvc.Spec.Resources.Requests[corev1.ResourceStorage] = newSize
+
+	// Apply the update
+	updatedPVC, err := client.CoreV1().PersistentVolumeClaims(namespace).Update(c.Request.Context(), pvc, metav1.UpdateOptions{})
+	if err != nil {
+		h.logger.WithError(err).WithField("pvc", name).WithField("namespace", namespace).Error("Failed to update PVC size")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	h.logger.WithField("pvc", name).WithField("namespace", namespace).WithField("oldSize", currentSize.String()).WithField("newSize", newSize.String()).Info("PVC scaled successfully")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "PVC scaled successfully",
+		"pvc":     updatedPVC,
+	})
 }

@@ -126,7 +126,7 @@ export function validateKubernetesYaml(yamlContent: string): YamlValidationResul
 
     for (const field of problematicFields) {
       const fieldParts = field.split('.');
-      let currentLevel = lines;
+      const currentLevel = lines;
       let found = false;
       
       for (let i = 0; i < fieldParts.length; i++) {

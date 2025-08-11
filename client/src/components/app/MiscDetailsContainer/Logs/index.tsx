@@ -76,7 +76,7 @@ const PodLogs = ({ namespace, name, configName, clusterName }: PodLogsProps) => 
   const downloadLogs = (format: 'txt' | 'json' | 'csv' = 'txt') => {
     const a = document.createElement('a');
     let content = '';
-    let filename = `${podDetails.metadata.name}-logs.${format}`;
+    const filename = `${podDetails.metadata.name}-logs.${format}`;
     
     if (format === 'json') {
       content = JSON.stringify(filteredLogs, null, 2);
@@ -187,7 +187,7 @@ const PodLogs = ({ namespace, name, configName, clusterName }: PodLogsProps) => 
     if (searchText.includes('|') || searchText.includes('.*') || searchText.includes('^') || searchText.includes('$')) {
       try {
         // Convert simple patterns to regex
-        let regexPattern = searchText
+        const regexPattern = searchText
           .replace(/\.\*/g, '.*') // .* for any characters
           .replace(/\|/g, '|') // | for OR
           .replace(/\^/g, '^') // ^ for start
