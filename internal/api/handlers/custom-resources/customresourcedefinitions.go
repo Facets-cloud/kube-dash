@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/Facets-cloud/kube-dash/internal/api/transformers"
 	"github.com/Facets-cloud/kube-dash/internal/api/utils"
 	"github.com/Facets-cloud/kube-dash/internal/k8s"
 	"github.com/Facets-cloud/kube-dash/internal/storage"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
@@ -129,7 +131,18 @@ func (h *CustomResourceDefinitionsHandler) GetCustomResourceDefinitions(c *gin.C
 		return
 	}
 
-	c.JSON(http.StatusOK, crdList)
+	// Convert to unstructured objects
+	var crds []unstructured.Unstructured
+	items, _ := crdList.UnstructuredContent()["items"].([]interface{})
+	for _, item := range items {
+		if crd, ok := item.(map[string]interface{}); ok {
+			crds = append(crds, unstructured.Unstructured{Object: crd})
+		}
+	}
+
+	// Transform to frontend format
+	transformed := transformers.TransformCustomResourceDefinitions(crds)
+	c.JSON(http.StatusOK, transformed)
 }
 
 // GetCustomResourceDefinitionsSSE returns CRDs as Server-Sent Events with real-time updates
@@ -155,8 +168,18 @@ func (h *CustomResourceDefinitionsHandler) GetCustomResourceDefinitionsSSE(c *gi
 			return nil, err
 		}
 
+		// Convert to unstructured objects
+		var crds []unstructured.Unstructured
 		items, _ := crdList.UnstructuredContent()["items"].([]interface{})
-		return items, nil
+		for _, item := range items {
+			if crd, ok := item.(map[string]interface{}); ok {
+				crds = append(crds, unstructured.Unstructured{Object: crd})
+			}
+		}
+
+		// Transform to frontend format
+		transformed := transformers.TransformCustomResourceDefinitions(crds)
+		return transformed, nil
 	}
 
 	// Get initial data
