@@ -34,6 +34,7 @@ type DataTableProps<TData, TValue> = {
   data: TData[];
   tableWidthCss: string;
   showNamespaceFilter: boolean;
+  showPodFilters?: boolean;
   instanceType: string;
   showToolbar?: boolean;
   loading?: boolean;
@@ -69,6 +70,7 @@ export function DataTable<TData, TValue>({
   data,
   tableWidthCss,
   showNamespaceFilter,
+  showPodFilters = false,
   instanceType,
   showToolbar = true,
   loading = false,
@@ -82,15 +84,43 @@ export function DataTable<TData, TValue>({
   const {
     selectedNamespace
   } = useAppSelector((state: RootState) => state.listTableNamesapce);
+  const {
+    selectedNodes
+  } = useAppSelector((state: RootState) => state.listTableNode);
+  const {
+    selectedStatuses
+  } = useAppSelector((state: RootState) => state.listTableStatus);
+  const {
+    selectedQos
+  } = useAppSelector((state: RootState) => state.listTableQos);
 
   const getDefaultValue = () => {
+    const filters = [];
     if (selectedNamespace.length > 0) {
-      return [{
+      filters.push({
         id: 'Namespace',
         value: Array.from(selectedNamespace)
-      }];
+      });
     }
-    return [];
+    if (selectedNodes.length > 0) {
+      filters.push({
+        id: 'Node',
+        value: Array.from(selectedNodes)
+      });
+    }
+    if (selectedStatuses.length > 0) {
+      filters.push({
+        id: 'Status',
+        value: Array.from(selectedStatuses)
+      });
+    }
+    if (selectedQos.length > 0) {
+      filters.push({
+        id: 'QoS',
+        value: Array.from(selectedQos)
+      });
+    }
+    return filters;
   };
   const [rowSelection, setRowSelection] = useState({});
   const [globalFilter, setGlobalFilter] = useState(searchString);
@@ -141,7 +171,7 @@ export function DataTable<TData, TValue>({
     <>
       {
         showToolbar
-        && <DataTableToolbar loading={loading} table={table} globalFilter={globalFilter} setGlobalFilter={setGlobalFilter} showNamespaceFilter={showNamespaceFilter} connectionStatus={connectionStatus} />
+        && <DataTableToolbar loading={loading} table={table} globalFilter={globalFilter} setGlobalFilter={setGlobalFilter} showNamespaceFilter={showNamespaceFilter} showPodFilters={showPodFilters} podData={data} connectionStatus={connectionStatus} />
       }
       {
          
@@ -212,4 +242,4 @@ export function DataTable<TData, TValue>({
       </div>
     </>
   );
-} 
+}

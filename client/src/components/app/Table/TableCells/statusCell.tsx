@@ -14,7 +14,7 @@ function StatusCell({ cellValue }: StatusCellProps) {
       : cellValue === 'Failed' || cellValue === 'Killing' || cellValue === 'False'?
       <Badge className="px-4" variant="destructive">{cellValue}</Badge>
       : cellValue === 'Terminating' ?
-      <Badge className="px-4 bg-orange-500 hover:bg-orange-600 text-white">{cellValue}</Badge>
+      <Badge className="px-4 bg-purple-500 hover:bg-purple-600 text-white">{cellValue}</Badge>
       : <Badge variant="outline">{cellValue}</Badge>
     }
     </span>

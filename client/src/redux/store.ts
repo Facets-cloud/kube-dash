@@ -46,6 +46,9 @@ import limitRangeDetailsSlice from '@/data/Configurations/LimitRange/LimitRangeD
 import limitRangeListSlice from '@/data/Configurations/LimitRange/LimitRangeListSlice';
 import listTableFilterSlice from '@/data/Misc/ListTableFilterSlice';
 import listTableNamesapceSlice from '@/data/Misc/ListTableNamesapceSlice';
+import listTableNodeSlice from '@/data/Misc/ListTableNodeSlice';
+import listTableStatusSlice from '@/data/Misc/ListTableStatusSlice';
+import listTableQosSlice from '@/data/Misc/ListTableQosSlice';
 import namespaceDetailsSlice from '@/data/Clusters/Namespaces/NamespaceDetailsSlice';
 import namespacePodsSlice from '@/data/Clusters/Namespaces/NamespacePodsSlice';
 import namespacesSlice from '@/data/Clusters/Namespaces/NamespacesSlice';
@@ -178,6 +181,9 @@ const store = configureStore({
     nodePods: nodePodsSlice,
     deleteResources: deleteResourcesSlice,
     listTableNamesapce: listTableNamesapceSlice,
+    listTableNode: listTableNodeSlice,
+    listTableStatus: listTableStatusSlice,
+    listTableQos: listTableQosSlice,
     customResourcesDefinitionDetails: customResourcesDefinitionDetailsSlice,
     clusterEvents: clusterEventsListSlice,
     cloudShell: cloudShellSlice,
