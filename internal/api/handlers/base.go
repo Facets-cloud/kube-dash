@@ -303,6 +303,21 @@ func (h *ResourcesHandler) CheckPermission(c *gin.Context) {
 	namespace := c.Query("namespace")
 	subresource := c.Query("subresource")
 
+	// Handle Helm releases specially - they are not standard Kubernetes resources
+	if resourceKind == "helmreleases" {
+		// For Helm releases, if we can access the cluster (which we already verified above),
+		// we assume the user has permission to manage Helm releases
+		c.JSON(http.StatusOK, gin.H{
+			"allowed":   true,
+			"reason":    "Helm releases permissions are managed through cluster access",
+			"group":     "helm.sh",
+			"resource":  "releases",
+			"verb":      verb,
+			"namespace": namespace,
+		})
+		return
+	}
+
 	var gvr schema.GroupVersionResource
 	if resourceKind == "customresources" {
 		group := c.Query("group")

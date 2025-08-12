@@ -612,7 +612,7 @@ func (s *Server) setupRoutes() {
 		api.GET("/helmreleases/:name", s.helmHandler.GetHelmReleaseDetails)
 		api.GET("/helmreleases/:name/history", s.helmHandler.GetHelmReleaseHistory)
 		api.GET("/helmreleases/:name/resources", s.helmHandler.GetHelmReleaseResources)
-
+		api.POST("/helmreleases/:name/rollback", s.helmHandler.RollbackHelmRelease)
 
 		// Cloud Shell endpoints
 		api.POST("/cloudshell", s.cloudShellHandler.CreateCloudShell)

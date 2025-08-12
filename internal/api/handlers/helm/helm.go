@@ -1146,7 +1146,7 @@ func (h *HelmHandler) DeleteHelmReleases(c *gin.Context) {
 	for _, item := range req {
 		// Create uninstall client
 		uninstallClient := action.NewUninstall(actionConfig)
-		
+
 		// Set options for uninstall
 		uninstallClient.Wait = true
 		uninstallClient.Timeout = 300 * time.Second // 5 minutes timeout
@@ -1167,7 +1167,7 @@ func (h *HelmHandler) DeleteHelmReleases(c *gin.Context) {
 			})
 		} else {
 			h.logger.Info("Successfully deleted Helm release", "release", item.Name, "cluster", cluster)
-			
+
 			// Clear cache for this release
 			configID := c.Query("config")
 			cacheKey := h.getCacheKey("helmreleases", configID, cluster, "")
@@ -1226,4 +1226,68 @@ func getAge(created time.Time) string {
 	} else {
 		return fmt.Sprintf("%dd", int(duration.Hours()/24))
 	}
+}
+
+// RollbackHelmRelease handles rollback of a Helm release to a specific revision
+func (h *HelmHandler) RollbackHelmRelease(c *gin.Context) {
+	releaseName := c.Param("name")
+	if releaseName == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "release name is required"})
+		return
+	}
+
+	// Parse request body for revision
+	var req struct {
+		Revision int `json:"revision"`
+	}
+	if err := c.BindJSON(&req); err != nil {
+		h.logger.WithError(err).Error("Failed to parse rollback request body")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+
+	config, err := h.getClientAndConfig(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	cluster := c.Query("cluster")
+
+	// Get Helm action configuration
+	actionConfig, err := h.helmFactory.GetHelmClientForConfig(config, cluster)
+	if err != nil {
+		h.logger.WithError(err).Error("Failed to get Helm client for rollback")
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("failed to get Helm client: %v", err)})
+		return
+	}
+
+	// Create rollback client
+	rollbackClient := action.NewRollback(actionConfig)
+	rollbackClient.Wait = true
+	rollbackClient.Timeout = 300 * time.Second // 5 minutes timeout
+	rollbackClient.Version = req.Revision
+
+	// Perform the rollback
+	err = rollbackClient.Run(releaseName)
+	if err != nil {
+		h.logger.WithError(err).WithFields(map[string]interface{}{
+			"release":  releaseName,
+			"revision": req.Revision,
+			"cluster":  cluster,
+		}).Error("Failed to rollback Helm release")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("rollback failed: %v", err)})
+		return
+	}
+
+	h.logger.Info("Successfully rolled back Helm release", "release", releaseName, "revision", req.Revision, "cluster", cluster)
+
+	// Clear cache for this release
+	configID := c.Query("config")
+	cacheKey := h.getCacheKey("helmreleases", configID, cluster, "")
+	h.cacheMux.Lock()
+	delete(h.cache, cacheKey)
+	h.cacheMux.Unlock()
+
+	c.JSON(http.StatusOK, gin.H{"message": "Release rolled back successfully"})
 }

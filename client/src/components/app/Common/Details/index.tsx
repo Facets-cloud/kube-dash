@@ -2,7 +2,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useDetailsWrapper, useFetchDataForDetails } from "../Hooks/Details";
 
-import { CaretLeftIcon } from "@radix-ui/react-icons";
+import { CaretLeftIcon, CubeIcon } from "@radix-ui/react-icons";
 import helmLogo from '../../../../assets/helm-logo.png';
 import { Events } from "../../Details/Events";
 import FourOFourError from "../../Errors/404Error";
@@ -38,6 +38,9 @@ import { toast } from "sonner";
 import { HelmReleaseHistory } from "../../Details/HelmReleaseHistory";
 import { HelmReleaseValues } from "../../Details/HelmReleaseValues";
 import { HelmReleaseResources } from "../../Details/HelmReleaseResources";
+import { RollbackHelmRelease } from "@/components/HelmReleases/RollbackHelmRelease";
+import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 const KwDetails = () => {
   const dispatch = useAppDispatch();
@@ -48,6 +51,7 @@ const KwDetails = () => {
   const { podDetails } = useAppSelector((state: RootState) => state.podDetails);
   const { persistentVolumeClaimDetails } = useAppSelector((state: RootState) => state.persistentVolumeClaimDetails);
   const { clusters, loading: clustersLoading } = useAppSelector((state: RootState) => state.clusters);
+  const { details: helmReleaseDetails } = useAppSelector((state: RootState) => state.helmReleaseDetails);
   const queryParamsObj: Record<string, string> = { config, cluster, namespace: namespace || '' };
   const hasShownConfigNotFoundToast = useRef(false);
   
@@ -194,6 +198,30 @@ const KwDetails = () => {
                       name={resourcename}
                       currentSize={String(persistentVolumeClaimDetails?.spec?.resources?.requests?.storage || '0')}
                     />
+                  )}
+                  {resourcekind === HELM_RELEASES_ENDPOINT && helmReleaseDetails && (
+                    <>
+                      <RollbackHelmRelease
+                        releaseName={resourcename}
+                        namespace={namespace || ''}
+                        configName={config}
+                        clusterName={cluster}
+                        history={helmReleaseDetails.history || []}
+                      />
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button variant="outline" disabled className="justify-start" size="sm">
+                              <CubeIcon className="h-3 w-3 mr-1" />
+                              Upgrade
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Coming Soon</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </>
                   )}
                   <TableDelete selectedRows={[]} />
                 </div>

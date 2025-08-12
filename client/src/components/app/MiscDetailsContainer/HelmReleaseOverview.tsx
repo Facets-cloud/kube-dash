@@ -1,17 +1,14 @@
 import { useAppSelector } from '@/redux/hooks';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { 
   ClockIcon, 
   CheckCircledIcon, 
   CrossCircledIcon, 
-  ExclamationTriangleIcon,
-  CubeIcon
+  ExclamationTriangleIcon
 } from '@radix-ui/react-icons';
-
 export function HelmReleaseOverview() {
   const { details } = useAppSelector((state) => state.helmReleaseDetails);
   
@@ -19,6 +16,8 @@ export function HelmReleaseOverview() {
 
   const { release, history } = details;
   const recentHistory = history?.slice(0, 5) || [];
+  
+
 
   const getStatusIcon = (status: string) => {
     switch (status.toLowerCase()) {
@@ -144,36 +143,7 @@ export function HelmReleaseOverview() {
         </CardContent>
       </Card>
 
-      {/* Quick Actions */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">Quick Actions</CardTitle>
-          <CardDescription>Common operations for this release</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            <Button variant="outline" className="w-full justify-start" disabled>
-              <ClockIcon className="h-4 w-4 mr-2" />
-              Rollback to Previous Revision
-            </Button>
-            <Button variant="outline" className="w-full justify-start" disabled>
-              <CubeIcon className="h-4 w-4 mr-2" />
-              Upgrade Release
-            </Button>
-            <Button variant="outline" className="w-full justify-start" disabled>
-              <ExclamationTriangleIcon className="h-4 w-4 mr-2" />
-              Uninstall Release
-            </Button>
-            <Button variant="outline" className="w-full justify-start" disabled>
-              <CheckCircledIcon className="h-4 w-4 mr-2" />
-              Test Release
-            </Button>
-          </div>
-          <p className="text-xs text-muted-foreground mt-3">
-            Advanced Helm operations will be available in future updates.
-          </p>
-        </CardContent>
-      </Card>
+
     </div>
   );
-} 
+}
