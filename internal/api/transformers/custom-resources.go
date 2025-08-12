@@ -119,8 +119,8 @@ func transformCRD(crd unstructured.Unstructured) CustomResourceDefinition {
 	// Generate query param
 	queryParam := "group=" + group + "&kind=" + kind + "&resource=" + plural + "&version=" + activeVersion
 
-	// Generate icon (using a default icon for now)
-	icon := "customresources"
+	// Backend default icon key; UI will try to map CRD group to a known SVG
+	icon := group
 
 	return CustomResourceDefinition{
 		ActiveVersion:            activeVersion,

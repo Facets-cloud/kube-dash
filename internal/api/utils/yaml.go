@@ -152,6 +152,16 @@ func (h *YAMLHandler) EnsureCompleteYAML(resource interface{}) ([]byte, error) {
 		return nil, fmt.Errorf("failed to unmarshal YAML for validation: %w", err)
 	}
 
+	// If the serialized structure contains a top-level "object" (common for
+	// k8s unstructured.Unstructured), flatten it by promoting its contents to
+	// the root and discarding the wrapper. This yields standard k8s YAML with
+	// apiVersion/kind/metadata at the top level.
+	if rawObj, ok := resourceMap["object"].(map[string]interface{}); ok {
+		resourceMap = rawObj
+	} else if rawObj, ok := resourceMap["Object"].(map[string]interface{}); ok {
+		resourceMap = rawObj
+	}
+
 	// Log the resource map keys for debugging
 	keys := make([]string, 0, len(resourceMap))
 	for k := range resourceMap {

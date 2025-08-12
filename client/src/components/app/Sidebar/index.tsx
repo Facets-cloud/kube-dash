@@ -1,6 +1,6 @@
 import './index.css';
 
-import { NAVIGATION_ROUTE } from "@/constants";
+import { API_VERSION, CUSTOM_RESOURCES_ENDPOINT, NAVIGATION_ROUTE } from "@/constants";
 import { ChevronRight, DatabaseIcon, LayersIcon, LayoutGridIcon, NetworkIcon, ShieldHalf, SlidersHorizontalIcon, UngroupIcon, Terminal } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -23,6 +23,8 @@ import helmLogo from '../../../assets/helm-logo.png';
 import { resetCustomResourcesList } from "@/data/CustomResources/CustomResourcesListSlice";
 import { resetListTableFilter } from "@/data/Misc/ListTableFilterSlice";
 import { clearPermissionError } from "@/data/PermissionErrors/PermissionErrorsSlice";
+import kwFetch from "@/data/kwFetch";
+import { updateCustomResources } from "@/data/CustomResources/CustomResourcesSlice";
 
 interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> {
 }
@@ -67,6 +69,23 @@ const Sidebar = memo(function ({ className }: SidebarProps) {
       });
     }
   }, []);
+
+  // Background-load Custom Resource Definitions for sidebar (non-blocking)
+  useEffect(() => {
+    const shouldLoadCRDs = Boolean(configName) && Boolean(clusterName) && Object.keys(customResourcesNavigation || {}).length === 0;
+    if (!shouldLoadCRDs) return;
+    const params = new URLSearchParams({ config: configName, cluster: clusterName });
+    // Fire-and-forget load; do not block other page loads
+    kwFetch(`${API_VERSION}/${CUSTOM_RESOURCES_ENDPOINT}?${params.toString()}`)
+      .then((res) => {
+        if (Array.isArray(res)) {
+          dispatch(updateCustomResources(res));
+        }
+      })
+      .catch(() => {
+        // silently ignore; sidebar will still work without CRDs
+      });
+  }, [configName, clusterName, dispatch]);
 
 
   const toggleMenu = (route: string) => {
@@ -304,7 +323,10 @@ const Sidebar = memo(function ({ className }: SidebarProps) {
                                             <TooltipTrigger asChild>
                                               <SidebarMenuSubButton asChild isActive={getActiveNav(customResource.name)}>
                                                 <a onClick={() => onCustomResourcesNavClick(customResource.route, customResource.name)}>
-                                                  <span className="text-gray-600 dark:text-gray-400 group-data-[collapsible=icon]:hidden">{customResource.name}</span>
+                                                  <span className="text-gray-600 dark:text-gray-400 group-data-[collapsible=icon]:hidden flex items-center gap-2">
+                                                    <SvgRenderer name={customResource.icon} minWidth={16} />
+                                                    {customResource.name}
+                                                  </span>
                                                 </a>
                                               </SidebarMenuSubButton>
                                             </TooltipTrigger>
