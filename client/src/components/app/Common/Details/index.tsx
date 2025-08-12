@@ -19,6 +19,7 @@ import { ScaleDeployments } from "../../MiscDetailsContainer/Deployments/ScaleDe
 import { RestartDeployments } from "../../MiscDetailsContainer/Deployments/RestartDeployments";
 import { ScaleStatefulSets } from "../../MiscDetailsContainer/StatefulSets/ScaleStatefulSets";
 import { RestartStatefulSets } from "../../MiscDetailsContainer/StatefulSets/RestartStatefulSets";
+import { RestartDaemonSets } from "../../MiscDetailsContainer/DaemonSets/RestartDaemonSets";
 import { CronJobTrigger } from "../../MiscDetailsContainer/CronJobs/CronJobTrigger";
 import NodeActions from "../../MiscDetailsContainer/NodeActions";
 import TableDelete from "../../Table/TableDelete";
@@ -165,6 +166,10 @@ const KwDetails = () => {
                       <RestartStatefulSets resourcename={resourcename} queryParams={new URLSearchParams(queryParamsObj).toString()}/>
                       <ScaleStatefulSets resourcename={resourcename} queryParams={new URLSearchParams(queryParamsObj).toString()}/>
                     </>
+                  }
+                  {
+                    resourcekind === 'daemonsets' && 
+                    <RestartDaemonSets resourcename={resourcename} queryParams={new URLSearchParams(queryParamsObj).toString()}/>
                   }
                   {
                     resourcekind === 'cronjobs' && 

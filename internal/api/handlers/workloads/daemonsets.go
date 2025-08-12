@@ -1,8 +1,10 @@
 package workloads
 
 import (
+	"context"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/Facets-cloud/kube-dash/internal/api/transformers"
 	"github.com/Facets-cloud/kube-dash/internal/api/types"
@@ -306,6 +308,56 @@ func (h *DaemonSetsHandler) GetDaemonSetPods(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, response)
+}
+
+// RestartDaemonSet restarts a daemonset using rolling restart
+func (h *DaemonSetsHandler) RestartDaemonSet(c *gin.Context) {
+	client, err := h.getClientAndConfig(c)
+	if err != nil {
+		h.logger.WithError(err).Error("Failed to get client for restarting daemonset")
+		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error(), "code": http.StatusBadRequest})
+		return
+	}
+
+	name := c.Param("name")
+	namespace := c.Query("namespace")
+	if namespace == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "namespace parameter is required", "code": http.StatusBadRequest})
+		return
+	}
+
+	// DaemonSets only support rolling restart (no recreate option like StatefulSets)
+	err = h.performRollingRestart(client, name, namespace)
+	if err != nil {
+		h.logger.WithError(err).WithField("daemonset", name).WithField("namespace", namespace).Error("Failed to perform rolling restart")
+		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error(), "code": http.StatusBadRequest})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Rolling restart initiated - pods will be replaced gradually while maintaining availability"})
+}
+
+// performRollingRestart performs a rolling restart by adding a restart annotation
+func (h *DaemonSetsHandler) performRollingRestart(client *kubernetes.Clientset, name, namespace string) error {
+	// Get the current daemonset
+	daemonSet, err := client.AppsV1().DaemonSets(namespace).Get(context.Background(), name, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to get daemonset: %w", err)
+	}
+
+	// Add restart annotation to pod template
+	if daemonSet.Spec.Template.Annotations == nil {
+		daemonSet.Spec.Template.Annotations = make(map[string]string)
+	}
+	daemonSet.Spec.Template.Annotations["kubectl.kubernetes.io/restartedAt"] = time.Now().Format(time.RFC3339)
+
+	// Update the daemonset
+	_, err = client.AppsV1().DaemonSets(namespace).Update(context.Background(), daemonSet, metav1.UpdateOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to update daemonset with restart annotation: %w", err)
+	}
+
+	return nil
 }
 
 // GetDaemonSetPodsByName returns pods for a specific daemonset by name

@@ -2,6 +2,7 @@ import DeploymentScaleSlice from '@/data/Workloads/Deployments/DeploymentScaleSl
 import DeploymentRestartSlice from '@/data/Workloads/Deployments/DeploymentRestartSlice';
 import StatefulSetScaleSlice from '@/data/Workloads/StatefulSets/StatefulSetScaleSlice';
 import StatefulSetRestartSlice from '@/data/Workloads/StatefulSets/StatefulSetRestartSlice';
+import DaemonSetRestartSlice from '@/data/Workloads/DaemonSets/DaemonSetRestartSlice';
 import CronJobTriggerSlice from '@/data/Workloads/CronJobs/CronJobTriggerSlice';
 import JobPodsSlice from '@/data/Workloads/Jobs/JobPodsSlice';
 import CronJobJobsSlice from '@/data/Workloads/CronJobs/CronJobJobsSlice';
@@ -192,6 +193,7 @@ const store = configureStore({
     deploymentRestart: DeploymentRestartSlice,
     statefulSetScale: StatefulSetScaleSlice,
     statefulSetRestart: StatefulSetRestartSlice,
+    daemonSetRestart: DaemonSetRestartSlice,
     cronJobTrigger: CronJobTriggerSlice,
     jobPods: JobPodsSlice,
     cronJobJobs: CronJobJobsSlice,
