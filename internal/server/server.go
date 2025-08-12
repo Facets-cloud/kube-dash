@@ -117,7 +117,6 @@ func New(cfg *config.Config) *Server {
 	store := storage.NewKubeConfigStore()
 	clientFactory := k8s.NewClientFactory()
 	kubeHandler := api.NewKubeConfigHandler(store, clientFactory, log)
-	baseResourcesHandler := handlers.NewResourcesHandler(store, clientFactory, log)
 
 	// Create configuration handlers
 	configMapsHandler := configurations.NewConfigMapsHandler(store, clientFactory, log)
@@ -173,6 +172,9 @@ func New(cfg *config.Config) *Server {
 	// Create Helm handlers
 	helmFactory := k8s.NewHelmClientFactory()
 	helmHandler := helm.NewHelmHandler(store, clientFactory, helmFactory, log)
+
+	// Create base resources handler with helm handler dependency
+	baseResourcesHandler := handlers.NewResourcesHandler(store, clientFactory, log, helmHandler)
 
 	// Create Cloud Shell handlers
 	cloudShellHandler := cloudshell.NewCloudShellHandler(store, clientFactory, helmFactory, log)
@@ -610,6 +612,7 @@ func (s *Server) setupRoutes() {
 		api.GET("/helmreleases/:name", s.helmHandler.GetHelmReleaseDetails)
 		api.GET("/helmreleases/:name/history", s.helmHandler.GetHelmReleaseHistory)
 		api.GET("/helmreleases/:name/resources", s.helmHandler.GetHelmReleaseResources)
+
 
 		// Cloud Shell endpoints
 		api.POST("/cloudshell", s.cloudShellHandler.CreateCloudShell)

@@ -26,14 +26,21 @@ type ResourcesHandler struct {
 	store         *storage.KubeConfigStore
 	clientFactory *k8s.ClientFactory
 	logger        *logger.Logger
+	helmHandler   HelmDeleter
+}
+
+// HelmDeleter interface for helm deletion operations
+type HelmDeleter interface {
+	DeleteHelmReleases(c *gin.Context)
 }
 
 // NewResourcesHandler creates a new resources handler
-func NewResourcesHandler(store *storage.KubeConfigStore, clientFactory *k8s.ClientFactory, log *logger.Logger) *ResourcesHandler {
+func NewResourcesHandler(store *storage.KubeConfigStore, clientFactory *k8s.ClientFactory, log *logger.Logger, helmHandler HelmDeleter) *ResourcesHandler {
 	return &ResourcesHandler{
 		store:         store,
 		clientFactory: clientFactory,
 		logger:        log,
+		helmHandler:   helmHandler,
 	}
 }
 
@@ -172,11 +179,24 @@ var resourceMapping = map[string]struct {
 	"rolebindings":        {schema.GroupVersionResource{Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "rolebindings"}, true},
 	"clusterroles":        {schema.GroupVersionResource{Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "clusterroles"}, false},
 	"clusterrolebindings": {schema.GroupVersionResource{Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "clusterrolebindings"}, false},
+
+	// Helm releases (custom handling)
+	"helmreleases": {schema.GroupVersionResource{Group: "helm.sh", Version: "v3", Resource: "releases"}, true},
 }
 
 // DeleteResources handles bulk deletion for various Kubernetes resources
 func (h *ResourcesHandler) DeleteResources(c *gin.Context) {
 	resourceKind := c.Param("resourcekind")
+
+	// Handle Helm releases specially
+	if resourceKind == "helmreleases" {
+		if h.helmHandler != nil {
+			h.helmHandler.DeleteHelmReleases(c)
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "helm handler not available"})
+		return
+	}
 
 	// Parse request body
 	var req DeleteResourcesRequest

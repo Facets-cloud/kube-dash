@@ -1096,6 +1096,91 @@ func getDaemonSetStatus(daemonSet appsv1.DaemonSet) string {
 	}
 }
 
+// DeleteHelmReleases handles deletion of Helm releases
+func (h *HelmHandler) DeleteHelmReleases(c *gin.Context) {
+	// Parse request body
+	var req []struct {
+		Name      string `json:"name"`
+		Namespace string `json:"namespace,omitempty"`
+	}
+	if err := c.BindJSON(&req); err != nil {
+		h.logger.WithError(err).Error("Failed to parse delete request body")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+
+	if len(req) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "no releases provided"})
+		return
+	}
+
+	config, err := h.getClientAndConfig(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	cluster := c.Query("cluster")
+
+	// Get Helm action configuration
+	actionConfig, err := h.helmFactory.GetHelmClientForConfig(config, cluster)
+	if err != nil {
+		h.logger.WithError(err).Error("Failed to get Helm client for delete")
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("failed to get Helm client: %v", err)})
+		return
+	}
+
+	// Process deletions and collect failures
+	type DeleteFailure struct {
+		Name      string `json:"name"`
+		Message   string `json:"message"`
+		Namespace string `json:"namespace,omitempty"`
+	}
+
+	resp := struct {
+		Failures []DeleteFailure `json:"failures"`
+	}{
+		Failures: []DeleteFailure{},
+	}
+
+	for _, item := range req {
+		// Create uninstall client
+		uninstallClient := action.NewUninstall(actionConfig)
+		
+		// Set options for uninstall
+		uninstallClient.Wait = true
+		uninstallClient.Timeout = 300 * time.Second // 5 minutes timeout
+
+		// Perform the uninstall
+		_, err := uninstallClient.Run(item.Name)
+		if err != nil {
+			h.logger.WithError(err).WithFields(map[string]interface{}{
+				"release":   item.Name,
+				"namespace": item.Namespace,
+				"cluster":   cluster,
+			}).Error("Failed to delete Helm release")
+
+			resp.Failures = append(resp.Failures, DeleteFailure{
+				Name:      item.Name,
+				Message:   err.Error(),
+				Namespace: item.Namespace,
+			})
+		} else {
+			h.logger.Info("Successfully deleted Helm release", "release", item.Name, "cluster", cluster)
+			
+			// Clear cache for this release
+			configID := c.Query("config")
+			cacheKey := h.getCacheKey("helmreleases", configID, cluster, "")
+			h.cacheMux.Lock()
+			delete(h.cache, cacheKey)
+			h.cacheMux.Unlock()
+		}
+	}
+
+	// Always return 200 with summary of failures for frontend to handle partial successes
+	c.JSON(http.StatusOK, resp)
+}
+
 func getStatefulSetStatus(statefulSet appsv1.StatefulSet) string {
 	if statefulSet.Status.ReadyReplicas == statefulSet.Status.Replicas && statefulSet.Status.Replicas > 0 {
 		return "Running"
