@@ -523,7 +523,8 @@ const helmReleasesColumnConfig = (config: string, cluster: string) => ({
     { title: 'Updated', accessorKey: 'updated' }
   ],
   queryParams: { config, cluster },
-  showNamespaceFilter: true
+  showNamespaceFilter: true,
+  showStatusFilter: true
 });
 
 export {

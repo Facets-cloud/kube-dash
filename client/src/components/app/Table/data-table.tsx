@@ -35,6 +35,7 @@ type DataTableProps<TData, TValue> = {
   tableWidthCss: string;
   showNamespaceFilter: boolean;
   showPodFilters?: boolean;
+  showStatusFilter?: boolean;
   instanceType: string;
   showToolbar?: boolean;
   loading?: boolean;
@@ -71,6 +72,7 @@ export function DataTable<TData, TValue>({
   tableWidthCss,
   showNamespaceFilter,
   showPodFilters = false,
+  showStatusFilter = false,
   instanceType,
   showToolbar = true,
   loading = false,
@@ -171,7 +173,7 @@ export function DataTable<TData, TValue>({
     <>
       {
         showToolbar
-        && <DataTableToolbar loading={loading} table={table} globalFilter={globalFilter} setGlobalFilter={setGlobalFilter} showNamespaceFilter={showNamespaceFilter} showPodFilters={showPodFilters} podData={data} connectionStatus={connectionStatus} />
+        && <DataTableToolbar loading={loading} table={table} globalFilter={globalFilter} setGlobalFilter={setGlobalFilter} showNamespaceFilter={showNamespaceFilter} showPodFilters={showPodFilters} showStatusFilter={showStatusFilter} podData={data} helmReleasesData={data} connectionStatus={connectionStatus} />
       }
       {
          

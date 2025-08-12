@@ -14,7 +14,7 @@ import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Table } from "@tanstack/react-table";
 import { ThemeModeSelector } from "@/components/app/Common/ThemeModeSelector";
-import { namespacesFilter, nodesFilter, statusFilter, qosFilter } from "@/utils";
+import { namespacesFilter, nodesFilter, statusFilter, qosFilter, helmReleasesStatusFilter } from "@/utils";
 import { resetFilterNamespace } from "@/data/Misc/ListTableNamesapceSlice";
 import { resetFilterNode, updateFilterNode } from "@/data/Misc/ListTableNodeSlice";
 import { resetFilterStatus, updateFilterStatus } from "@/data/Misc/ListTableStatusSlice";
@@ -34,7 +34,9 @@ type DataTableToolbarProps<TData> = {
   setGlobalFilter: React.Dispatch<React.SetStateAction<string>>;
   showNamespaceFilter: boolean;
   showPodFilters?: boolean;
+  showStatusFilter?: boolean;
   podData?: any[];
+  helmReleasesData?: any[];
   loading?: boolean;
   connectionStatus?: 'connecting' | 'connected' | 'reconnecting' | 'error';
 }
@@ -45,7 +47,9 @@ export function DataTableToolbar<TData>({
   setGlobalFilter,
   showNamespaceFilter,
   showPodFilters = false,
+  showStatusFilter = false,
   podData = [],
+  helmReleasesData = [],
   loading = true,
   connectionStatus = 'connected',
 }: DataTableToolbarProps<TData>) {
@@ -125,6 +129,16 @@ export function DataTableToolbar<TData>({
             options={namespacesFilter(namespaces)}
           />
         )}
+        {showStatusFilter && !loading && helmReleasesData && Array.isArray(helmReleasesData) && helmReleasesData.length > 0 && (
+          <DataTableGenericFacetedFilter
+            column={table.getColumn("Status")}
+            title="Status"
+            options={helmReleasesStatusFilter(helmReleasesData)}
+            selectedValues={selectedStatuses}
+            onSelectionChange={(values) => dispatch(updateFilterStatus(values))}
+            onReset={() => dispatch(resetFilterStatus())}
+          />
+        )}
         {showPodFilters && !loading && podData && Array.isArray(podData) && podData.length > 0 && (
           <>
             <DataTableGenericFacetedFilter
@@ -153,12 +167,13 @@ export function DataTableToolbar<TData>({
             />
           </>
         )}
-        {isFiltered && (showNamespaceFilter || showPodFilters) && !loading && (
+        {isFiltered && (showNamespaceFilter || showPodFilters || showStatusFilter) && !loading && (
           <Button
             variant="ghost"
             onClick={() => { 
               table.resetColumnFilters(); 
               if (showNamespaceFilter) dispatch(resetFilterNamespace());
+              if (showStatusFilter) dispatch(resetFilterStatus());
               if (showPodFilters) {
                 dispatch(resetFilterNode());
                 dispatch(resetFilterStatus());

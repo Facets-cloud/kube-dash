@@ -1,6 +1,6 @@
 import { ClusterDetails, HeaderList } from "@/types";
 import { defaultSkeletonRow, getEventStreamUrl } from "@/utils";
-import { PODS_ENDPOINT } from "@/constants";
+import { PODS_ENDPOINT, HELM_RELEASES_ENDPOINT } from "@/constants";
 
 import { ActionCreatorWithPayload } from "@reduxjs/toolkit";
 import { DataTable } from "@/components/app/Table";
@@ -130,6 +130,7 @@ const CreateTable = <T extends ClusterDetails, C extends HeaderList>({
           data={loading ? defaultSkeletonRow() : data}
           showNamespaceFilter={showNamespaceFilter}
           showPodFilters={endpoint === PODS_ENDPOINT}
+          showStatusFilter={endpoint === HELM_RELEASES_ENDPOINT}
           tableWidthCss={cn('list-table-max-width-height', getTableClasses())}
           instanceType={instanceType}
           loading={loading}
