@@ -52,6 +52,11 @@ func TransformPodToResponse(pod *v1.Pod, configName, clusterName string) types.P
 	if pod.Status.Reason != "" {
 		status = pod.Status.Reason
 	}
+	
+	// Check if pod is terminating (has DeletionTimestamp set)
+	if pod.DeletionTimestamp != nil {
+		status = "Terminating"
+	}
 
 	// Default CPU and memory; may be overwritten by live metrics in handler
 	cpu := "0"

@@ -27,6 +27,7 @@ type PodDetailsMetadata = {
   uid: string,
   resourceVersion: string,
   creationTimestamp: string,
+  deletionTimestamp?: string | null,
   labels: {
     [key: string]: string,
   },
