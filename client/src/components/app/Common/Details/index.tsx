@@ -8,7 +8,7 @@ import { Events } from "../../Details/Events";
 import FourOFourError from "../../Errors/404Error";
 import { Loader } from "../../Loader";
 import { Overview } from "../../Details/Overview";
-import { PODS_ENDPOINT, HELM_RELEASES_ENDPOINT, PERSISTENT_VOLUME_CLAIMS_ENDPOINT } from "@/constants";
+import { PODS_ENDPOINT, HELM_RELEASES_ENDPOINT, PERSISTENT_VOLUME_CLAIMS_ENDPOINT, STATEFUL_SETS_ENDPOINT } from "@/constants";
 import { PodLogs } from "../../MiscDetailsContainer";
 import { PodExec } from "../../MiscDetailsContainer/PodExec";
 import { PortForwardDialog } from "../../MiscDetailsContainer/PortForward/PortForwardDialog";
@@ -17,6 +17,8 @@ import { RootState } from "@/redux/store";
 
 import { ScaleDeployments } from "../../MiscDetailsContainer/Deployments/ScaleDeployments";
 import { RestartDeployments } from "../../MiscDetailsContainer/Deployments/RestartDeployments";
+import { ScaleStatefulSets } from "../../MiscDetailsContainer/StatefulSets/ScaleStatefulSets";
+import { RestartStatefulSets } from "../../MiscDetailsContainer/StatefulSets/RestartStatefulSets";
 import { CronJobTrigger } from "../../MiscDetailsContainer/CronJobs/CronJobTrigger";
 import NodeActions from "../../MiscDetailsContainer/NodeActions";
 import TableDelete from "../../Table/TableDelete";
@@ -151,6 +153,13 @@ const KwDetails = () => {
                     <>
                       <RestartDeployments resourcename={resourcename} queryParams={new URLSearchParams(queryParamsObj).toString()}/>
                       <ScaleDeployments resourcename={resourcename} queryParams={new URLSearchParams(queryParamsObj).toString()}/>
+                    </>
+                  }
+                  {
+                    resourcekind === STATEFUL_SETS_ENDPOINT && 
+                    <>
+                      <RestartStatefulSets resourcename={resourcename} queryParams={new URLSearchParams(queryParamsObj).toString()}/>
+                      <ScaleStatefulSets resourcename={resourcename} queryParams={new URLSearchParams(queryParamsObj).toString()}/>
                     </>
                   }
                   {

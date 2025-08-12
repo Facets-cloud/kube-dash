@@ -424,6 +424,8 @@ func (s *Server) setupRoutes() {
 		api.GET("/deployments", s.deploymentsHandler.GetDeploymentsSSE)
 		api.POST("/deployments/:name/scale", s.deploymentsHandler.ScaleDeployment)
 		api.POST("/deployments/:name/restart", s.deploymentsHandler.RestartDeployment)
+		api.POST("/statefulsets/:name/scale", s.statefulSetsHandler.ScaleStatefulSet)
+		api.POST("/statefulsets/:name/restart", s.statefulSetsHandler.RestartStatefulSet)
 		api.GET("/daemonsets", s.daemonSetsHandler.GetDaemonSetsSSE)
 		api.GET("/statefulsets", s.statefulSetsHandler.GetStatefulSetsSSE)
 		api.GET("/replicasets", s.replicaSetsHandler.GetReplicaSetsSSE)

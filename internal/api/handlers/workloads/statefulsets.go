@@ -1,8 +1,10 @@
 package workloads
 
 import (
+	"context"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/Facets-cloud/kube-dash/internal/api/transformers"
 	"github.com/Facets-cloud/kube-dash/internal/api/types"
@@ -358,4 +360,183 @@ func (h *StatefulSetsHandler) GetStatefulSetPodsByName(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, response)
+}
+
+// ScaleStatefulSet updates the replicas of a StatefulSet via the scale subresource
+func (h *StatefulSetsHandler) ScaleStatefulSet(c *gin.Context) {
+	client, err := h.getClientAndConfig(c)
+	if err != nil {
+		h.logger.WithError(err).Error("Failed to get client for scaling statefulset")
+		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error(), "code": http.StatusBadRequest})
+		return
+	}
+
+	name := c.Param("name")
+	namespace := c.Query("namespace")
+	if namespace == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "namespace parameter is required", "code": http.StatusBadRequest})
+		return
+	}
+
+	var body struct {
+		Replicas int32 `json:"replicas"`
+	}
+	if err := c.BindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid request body", "code": http.StatusBadRequest})
+		return
+	}
+
+	scale, err := client.AppsV1().StatefulSets(namespace).GetScale(c.Request.Context(), name, metav1.GetOptions{})
+	if err != nil {
+		h.logger.WithError(err).WithField("statefulset", name).WithField("namespace", namespace).Error("Failed to get statefulset scale")
+		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error(), "code": http.StatusBadRequest})
+		return
+	}
+
+	scale.Spec.Replicas = body.Replicas
+	if _, err := client.AppsV1().StatefulSets(namespace).UpdateScale(c.Request.Context(), name, scale, metav1.UpdateOptions{}); err != nil {
+		h.logger.WithError(err).WithField("statefulset", name).WithField("namespace", namespace).Error("Failed to update statefulset scale")
+		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error(), "code": http.StatusBadRequest})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "StatefulSet Scaled"})
+}
+
+// RestartStatefulSet restarts all pods in a statefulset by adding a restart annotation
+func (h *StatefulSetsHandler) RestartStatefulSet(c *gin.Context) {
+	client, err := h.getClientAndConfig(c)
+	if err != nil {
+		h.logger.WithError(err).Error("Failed to get client for restarting statefulset")
+		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error(), "code": http.StatusBadRequest})
+		return
+	}
+
+	name := c.Param("name")
+	namespace := c.Query("namespace")
+	if namespace == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "namespace parameter is required", "code": http.StatusBadRequest})
+		return
+	}
+
+	var body struct {
+		RestartType string `json:"restartType"` // "rolling" or "recreate"
+	}
+	if err := c.BindJSON(&body); err != nil {
+		// Default to rolling restart if no body provided
+		body.RestartType = "rolling"
+	}
+
+	// Validate restart type
+	if body.RestartType != "rolling" && body.RestartType != "recreate" {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "restartType must be 'rolling' or 'recreate'", "code": http.StatusBadRequest})
+		return
+	}
+
+	if body.RestartType == "rolling" {
+		// Rolling restart: Add restart annotation to trigger gradual pod replacement
+		err = h.performRollingRestart(client, name, namespace)
+		if err != nil {
+			h.logger.WithError(err).WithField("statefulset", name).WithField("namespace", namespace).Error("Failed to perform rolling restart")
+			c.JSON(http.StatusBadRequest, gin.H{"message": err.Error(), "code": http.StatusBadRequest})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "Rolling restart initiated - pods will be replaced gradually while maintaining availability"})
+	} else {
+		// Recreate restart: Set replicas to 0, then back to original count
+		err = h.performRecreateRestart(client, name, namespace)
+		if err != nil {
+			h.logger.WithError(err).WithField("statefulset", name).WithField("namespace", namespace).Error("Failed to perform recreate restart")
+			c.JSON(http.StatusBadRequest, gin.H{"message": err.Error(), "code": http.StatusBadRequest})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "Recreate restart initiated - pods will be restarted in the background"})
+	}
+}
+
+// performRollingRestart performs a rolling restart by adding a restart annotation
+func (h *StatefulSetsHandler) performRollingRestart(client *kubernetes.Clientset, name, namespace string) error {
+	// Get the current statefulset
+	statefulSet, err := client.AppsV1().StatefulSets(namespace).Get(context.Background(), name, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to get statefulset: %w", err)
+	}
+
+	// Add restart annotation to pod template
+	if statefulSet.Spec.Template.Annotations == nil {
+		statefulSet.Spec.Template.Annotations = make(map[string]string)
+	}
+	statefulSet.Spec.Template.Annotations["kubectl.kubernetes.io/restartedAt"] = time.Now().Format(time.RFC3339)
+
+	// Update the statefulset
+	_, err = client.AppsV1().StatefulSets(namespace).Update(context.Background(), statefulSet, metav1.UpdateOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to update statefulset with restart annotation: %w", err)
+	}
+
+	return nil
+}
+
+// performRecreateRestart performs a recreate restart by scaling to 0 and back
+func (h *StatefulSetsHandler) performRecreateRestart(client *kubernetes.Clientset, name, namespace string) error {
+	// Get the current statefulset
+	statefulSet, err := client.AppsV1().StatefulSets(namespace).Get(context.Background(), name, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to get statefulset: %w", err)
+	}
+
+	// Store original replica count
+	originalReplicas := *statefulSet.Spec.Replicas
+
+	// Scale to 0
+	if err := h.scaleStatefulSetWithRetry(client, name, namespace, 0); err != nil {
+		return fmt.Errorf("failed to scale statefulset to 0: %w", err)
+	}
+
+	// Wait a moment for pods to terminate
+	time.Sleep(2 * time.Second)
+
+	// Scale back to original count in a goroutine to avoid blocking the response
+	go func() {
+		time.Sleep(5 * time.Second) // Wait for pods to fully terminate
+		if err := h.scaleStatefulSetWithRetry(client, name, namespace, originalReplicas); err != nil {
+			h.logger.WithError(err).WithField("statefulset", name).WithField("namespace", namespace).Error("Failed to scale statefulset back to original count")
+		}
+	}()
+
+	return nil
+}
+
+// scaleStatefulSetWithRetry scales a statefulset with retry logic for conflict errors
+func (h *StatefulSetsHandler) scaleStatefulSetWithRetry(client *kubernetes.Clientset, name, namespace string, replicas int32) error {
+	for i := 0; i < 5; i++ {
+		scale, err := client.AppsV1().StatefulSets(namespace).GetScale(context.Background(), name, metav1.GetOptions{})
+		if err != nil {
+			return fmt.Errorf("failed to get statefulset scale: %w", err)
+		}
+
+		scale.Spec.Replicas = replicas
+		_, err = client.AppsV1().StatefulSets(namespace).UpdateScale(context.Background(), name, scale, metav1.UpdateOptions{})
+		if err == nil {
+			return nil
+		}
+
+		// If it's a conflict error, retry after a short delay
+		if isStatefulSetConflictError(err) {
+			time.Sleep(time.Duration(i+1) * 100 * time.Millisecond)
+			continue
+		}
+
+		return fmt.Errorf("failed to update statefulset scale: %w", err)
+	}
+
+	return fmt.Errorf("failed to scale statefulset after 5 retries")
+}
+
+// isStatefulSetConflictError checks if the error is a conflict error
+func isStatefulSetConflictError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return err.Error() == "Operation cannot be fulfilled on statefulsets.apps \"\" the object has been modified; please apply your changes to the latest version and try again"
 }
