@@ -345,6 +345,7 @@ func (s *Server) setupRoutes() {
 		api.GET("/configmap/:name", s.configMapsHandler.GetConfigMapByName)
 		api.GET("/configmap/:name/yaml", s.configMapsHandler.GetConfigMapYAMLByName)
 		api.GET("/configmap/:name/events", s.configMapsHandler.GetConfigMapEventsByName)
+		api.GET("/configmap/:name/dependencies", s.resourceReferencesHandler.GetConfigMapDependencies)
 
 		// Secrets endpoints
 		api.GET("/secrets", s.secretsHandler.GetSecretsSSE)
@@ -354,6 +355,7 @@ func (s *Server) setupRoutes() {
 		api.GET("/secret/:name", s.secretsHandler.GetSecretByName)
 		api.GET("/secret/:name/yaml", s.secretsHandler.GetSecretYAMLByName)
 		api.GET("/secret/:name/events", s.secretsHandler.GetSecretEventsByName)
+		api.GET("/secret/:name/dependencies", s.resourceReferencesHandler.GetSecretDependencies)
 
 		// HPA endpoints
 		api.GET("/horizontalpodautoscalers", s.hpasHandler.GetHPAsSSE)

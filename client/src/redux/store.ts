@@ -74,6 +74,8 @@ import runtimeClassDetailsSlice from '@/data/Configurations/RuntimeClasses/Runti
 import runtimeClassesListSlice from '@/data/Configurations/RuntimeClasses/RuntimeClassesListSlice';
 import secretsDetailsSlice from '@/data/Configurations/Secrets/SecretsDetailsSlice';
 import secretsListSlice from '@/data/Configurations/Secrets/SecretsListSlice';
+import secretDependenciesSlice from '@/data/Configurations/Secrets/SecretDependenciesSlice';
+import configMapDependenciesSlice from '@/data/Configurations/ConfigMaps/ConfigMapDependenciesSlice';
 import serviceAccountDetailsSlice from '@/data/AccessControls/ServiceAccounts/ServiceAccountDetailsSlice';
 import serviceAccountsListSlice from '@/data/AccessControls/ServiceAccounts/ServiceAccountsListSlice';
 import serviceDetailSlice from '@/data/Networks/Services/ServiceDetailSlice';
@@ -188,7 +190,9 @@ const store = configureStore({
     permissionErrors: permissionErrorsSlice,
     listTableRefresh: listTableRefreshSlice,
     nodeActions: nodeActionsSlice,
-    persistentVolumeClaimScale: persistentVolumeClaimScaleSlice
+    persistentVolumeClaimScale: persistentVolumeClaimScaleSlice,
+    secretDependencies: secretDependenciesSlice,
+    configMapDependencies: configMapDependenciesSlice,
   },
 });
 
