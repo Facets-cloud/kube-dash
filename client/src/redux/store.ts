@@ -96,6 +96,7 @@ import yamlSlice from '@/data/Yaml/YamlSlice';
 import { helmReleasesReducer, helmReleaseDetailsReducer } from '@/data/Helm';
 import helmReleaseResourcesReducer from '@/data/Helm/HelmReleaseResourcesSlice';
 import helmActionsReducer from '@/data/Helm/HelmActionsSlice';
+import helmChartsReducer from '@/data/Helm/HelmChartsSlice';
 import cloudShellSlice from '@/data/CloudShell/CloudShellSlice';
 import permissionErrorsSlice from '@/data/PermissionErrors/PermissionErrorsSlice';
 import listTableRefreshSlice from '@/data/Misc/ListTableRefreshSlice';
@@ -201,6 +202,7 @@ const store = configureStore({
     helmReleaseDetails: helmReleaseDetailsReducer,
     helmReleaseResources: helmReleaseResourcesReducer,
     helmActions: helmActionsReducer,
+    helmCharts: helmChartsReducer,
     permissionErrors: permissionErrorsSlice,
     listTableRefresh: listTableRefreshSlice,
     nodeActions: nodeActionsSlice,

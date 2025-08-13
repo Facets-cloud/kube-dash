@@ -16,6 +16,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"gopkg.in/yaml.v2"
 	"helm.sh/helm/v3/pkg/action"
+	"helm.sh/helm/v3/pkg/chart/loader"
+	"helm.sh/helm/v3/pkg/cli"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/clientcmd/api"
 
@@ -44,6 +46,10 @@ type HelmHandler struct {
 	cache    map[string]CacheEntry
 	cacheMux sync.RWMutex
 	cacheTTL time.Duration
+
+	// Artifact Hub package ID -> repository path mapping (e.g., helm/<repo>/<chart>)
+	pkgIDRepoPath map[string]string
+	pkgMux        sync.RWMutex
 }
 
 // NewHelmHandler creates a new Helm handler
@@ -57,12 +63,32 @@ func NewHelmHandler(store *storage.KubeConfigStore, clientFactory *k8s.ClientFac
 		sseHandler:    utils.NewSSEHandler(log),
 		cache:         make(map[string]CacheEntry),
 		cacheTTL:      120 * time.Second, // Increased to 2 minutes for better performance
+		pkgIDRepoPath: make(map[string]string),
 	}
 
 	// Start background cache cleanup
 	go handler.startCacheCleanup()
 
 	return handler
+}
+
+// setPackageRepoPath stores a mapping of Artifact Hub package ID to repository path
+func (h *HelmHandler) setPackageRepoPath(packageID, repo, chart string) {
+	if packageID == "" || repo == "" || chart == "" {
+		return
+	}
+	repoPath := fmt.Sprintf("helm/%s/%s", repo, chart)
+	h.pkgMux.Lock()
+	h.pkgIDRepoPath[packageID] = repoPath
+	h.pkgMux.Unlock()
+}
+
+// packageIDToRepoPath returns repository path for a given Artifact Hub package ID
+func (h *HelmHandler) packageIDToRepoPath(packageID string) (string, bool) {
+	h.pkgMux.RLock()
+	defer h.pkgMux.RUnlock()
+	repoPath, ok := h.pkgIDRepoPath[packageID]
+	return repoPath, ok
 }
 
 // startCacheCleanup runs periodic cache cleanup
@@ -1290,4 +1316,123 @@ func (h *HelmHandler) RollbackHelmRelease(c *gin.Context) {
 	h.cacheMux.Unlock()
 
 	c.JSON(http.StatusOK, gin.H{"message": "Release rolled back successfully"})
+}
+
+// InstallHelmChart installs a Helm chart
+func (h *HelmHandler) InstallHelmChart(c *gin.Context) {
+	var installRequest struct {
+		Name       string `json:"name" binding:"required"`
+		Namespace  string `json:"namespace"`
+		Chart      string `json:"chart" binding:"required"`
+		Repository string `json:"repository"`
+		Version    string `json:"version"`
+		Values     string `json:"values"`
+	}
+
+	if err := c.ShouldBindJSON(&installRequest); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if installRequest.Namespace == "" {
+		installRequest.Namespace = "default"
+	}
+
+	// Implement Helm installation with basic repository+chart reference
+	config, err := h.getClientAndConfig(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	cluster := c.Query("cluster")
+
+	// Parse custom values if provided
+	var values map[string]interface{}
+	if installRequest.Values != "" {
+		if err := yaml.Unmarshal([]byte(installRequest.Values), &values); err != nil {
+			h.logger.Error("Failed to parse custom values", "error", err)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid YAML in custom values"})
+			return
+		}
+	}
+
+	// Build Helm action config
+	actionConfig, err := h.helmFactory.GetHelmClientForConfig(config, cluster)
+	if err != nil {
+		h.logger.Error("Failed to get Helm client for install", "error", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("failed to get Helm client: %v", err)})
+		return
+	}
+
+	install := action.NewInstall(actionConfig)
+	install.ReleaseName = installRequest.Name
+	install.Namespace = installRequest.Namespace
+	install.CreateNamespace = true
+	if installRequest.Version != "" {
+		install.Version = installRequest.Version
+	}
+
+	// Configure repo URL to avoid constructing incorrect direct URLs
+	// Equivalent to: helm install <name> <chart> --repo <repoURL> --version <ver>
+	if installRequest.Repository != "" {
+		install.ChartPathOptions.RepoURL = installRequest.Repository
+	}
+	install.ChartPathOptions.Version = installRequest.Version
+	chartRef := installRequest.Chart
+
+	// Load chart (supports: path, repo/chart, OCI not handled here)
+	chartPath, err := install.LocateChart(chartRef, cli.New())
+	if err != nil {
+		h.logger.Error("Failed to locate chart", "chart", chartRef, "error", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("failed to locate chart: %v", err)})
+		return
+	}
+	ch, err := loader.Load(chartPath)
+	if err != nil {
+		h.logger.Error("Failed to load chart", "path", chartPath, "error", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("failed to load chart: %v", err)})
+		return
+	}
+
+	// Parse values again into map for Helm
+	vals := map[string]interface{}{}
+	if installRequest.Values != "" {
+		if err := yaml.Unmarshal([]byte(installRequest.Values), &vals); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid YAML in custom values"})
+			return
+		}
+	}
+
+	// Run install (synchronous)
+	rel, err := install.Run(ch, vals)
+	if err != nil {
+		// Improve error reporting for UI consumers
+		msg := err.Error()
+		h.logger.Error("Helm install failed", "release", installRequest.Name, "error", err)
+		c.JSON(http.StatusUnprocessableEntity, gin.H{
+			"error":   "helm install failed",
+			"details": msg,
+		})
+		return
+	}
+
+	// Clear releases cache
+	configID := c.Query("config")
+	cacheKey := h.getCacheKey("helmreleases", configID, cluster, "")
+	h.cacheMux.Lock()
+	delete(h.cache, cacheKey)
+	h.cacheMux.Unlock()
+
+	h.logger.Info("Helm install succeeded", "release", rel.Name, "namespace", rel.Namespace, "chart", rel.Chart.Metadata.Name, "version", rel.Chart.Metadata.Version)
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": fmt.Sprintf("Installed %s", rel.Name),
+		"release": map[string]interface{}{
+			"name":      rel.Name,
+			"namespace": rel.Namespace,
+			"chart":     rel.Chart.Metadata.Name,
+			"version":   rel.Chart.Metadata.Version,
+			"status":    rel.Info.Status,
+		},
+	})
 }

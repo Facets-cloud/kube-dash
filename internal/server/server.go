@@ -615,6 +615,13 @@ func (s *Server) setupRoutes() {
 		api.GET("/helmreleases/:name/resources", s.helmHandler.GetHelmReleaseResources)
 		api.POST("/helmreleases/:name/rollback", s.helmHandler.RollbackHelmRelease)
 
+		// Helm Charts endpoints
+		api.GET("/helmcharts", s.helmHandler.SearchHelmCharts)
+		api.GET("/helmcharts/:packageId", s.helmHandler.GetHelmChartDetails)
+		api.GET("/helmcharts/:packageId/versions", s.helmHandler.GetHelmChartVersions)
+		api.GET("/helmcharts/:packageId/:version/templates", s.helmHandler.GetHelmChartTemplates)
+		api.POST("/helmcharts/install", s.helmHandler.InstallHelmChart)
+
 		// Cloud Shell endpoints
 		api.POST("/cloudshell", s.cloudShellHandler.CreateCloudShell)
 		api.GET("/cloudshell", s.cloudShellHandler.ListCloudShellSessions)

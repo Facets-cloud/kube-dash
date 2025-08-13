@@ -226,8 +226,9 @@ html {
   background-color: hsl(var(--success));
 }
 
-body { 
-  overflow: hidden; 
+body {
+  /* Allow page to scroll when content exceeds viewport */
+  overflow: auto;
 }
 
 .empty-table {
@@ -247,6 +248,13 @@ body {
   animation: bgColorChange 2s ease-in-out;
 }
 
+/* Simple indeterminate progress bar animation */
+@keyframes progress {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(0%); }
+  100% { transform: translateX(100%); }
+}
+
 .overview {
   max-height: calc(100vh - 115px);
 }
@@ -260,7 +268,7 @@ body {
 
 /* Monaco editor container fix */
 .monaco-editor {
-  overflow: hidden;
+  overflow: auto;
 }
 
 /* Parent container fix */

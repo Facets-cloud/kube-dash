@@ -9,6 +9,7 @@ import { KubeWall } from '@/KubeWall';
 import { KwDetails } from '@/components/app/Common/Details';
 import { KwList } from '@/components/app/Common/List';
 import { CloudShellDetailsContainer } from '@/components/app/MiscDetailsContainer/CloudShellDetailsContainer';
+import { HelmChartsOverview } from '@/components/app/HelmCharts/HelmChartsOverview';
 
 
 
@@ -74,6 +75,16 @@ const cloudShellRoute = createRoute({
   })
 });
 
+const helmChartsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/helmcharts',
+  component: HelmChartsOverview,
+  validateSearch: (search: Record<string, unknown>) => ({
+    cluster: String(search.cluster) || '',
+    namespace: search.namespace ? String(search.namespace) : 'default',
+  })
+});
+
 
 
 const kubeConfigurationRoute = createRoute({
@@ -88,7 +99,8 @@ const routeTree = rootRoute.addChildren([
   appRoute.addChildren([
     kwList,
     kwDetails,
-    cloudShellRoute
+    cloudShellRoute,
+    helmChartsRoute
   ])
 ]);
 
@@ -112,5 +124,6 @@ export {
   kwList,
   kwDetails,
   cloudShellRoute,
+  helmChartsRoute,
   appRoute
 };

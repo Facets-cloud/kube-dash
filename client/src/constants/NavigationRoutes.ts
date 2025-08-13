@@ -137,6 +137,10 @@ const NAVIGATION_ROUTE: NavigationRoutes = {
     {
       name: 'Releases',
       route: 'helmreleases'
+    },
+    {
+      name: 'Charts',
+      route: 'helmcharts'
     }
   ],
   'Tools': [

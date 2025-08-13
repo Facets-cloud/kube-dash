@@ -101,9 +101,11 @@ const Sidebar = memo(function ({ className }: SidebarProps) {
     dispatch(clearPermissionError());
     // setActiveTab(routeValue);
     
-    // Handle cloud shell route differently
+    // Handle special routes differently
     if (routeValue === 'cloudshell') {
       navigate({ to: `/${configName}/cloudshell?cluster=${encodeURIComponent(clusterName)}` });
+    } else if (routeValue === 'helmcharts') {
+      navigate({ to: `/${configName}/helmcharts?cluster=${encodeURIComponent(clusterName)}` });
     } else {
       navigate({ to: `/${configName}/list?cluster=${encodeURIComponent(clusterName)}&resourcekind=${routeValue}` });
     }
