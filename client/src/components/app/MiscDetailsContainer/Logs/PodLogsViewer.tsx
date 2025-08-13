@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 import { toast } from 'sonner';
 import {
@@ -23,6 +24,8 @@ import {
   AlertCircle,
   Info,
   XCircle,
+  Filter,
+  Regex,
 } from 'lucide-react';
 import { usePodLogsWebSocket, LogMessage } from '@/hooks/usePodLogsWebSocket';
 import { cn } from '@/lib/utils';
@@ -153,6 +156,10 @@ export const PodLogsViewer: React.FC<PodLogsViewerProps> = ({
   const [currentSearchIndex, setCurrentSearchIndex] = useState(-1);
   const [tailLines] = useState(100);
   const [logLevel] = useState<string>('all');
+  const [selectedContainer, setSelectedContainer] = useState<string>('all');
+  const [searchMode, setSearchMode] = useState<'simple' | 'regex' | 'grep'>('simple');
+  const [caseSensitive, setCaseSensitive] = useState(false);
+  const [availableContainers, setAvailableContainers] = useState<string[]>([]);
   
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const logIdCounter = useRef(0);
@@ -182,6 +189,16 @@ export const PodLogsViewer: React.FC<PodLogsViewerProps> = ({
         id: `log-${logIdCounter.current++}`,
       };
       
+      // Update available containers
+      if (logEntry.container) {
+        setAvailableContainers(prev => {
+          if (!prev.includes(logEntry.container!)) {
+            return [...prev, logEntry.container!].sort();
+          }
+          return prev;
+        });
+      }
+      
       setLogs(prevLogs => {
         const newLogs = [...prevLogs, logEntry];
         // Keep only last 10000 logs to prevent memory issues
@@ -195,34 +212,91 @@ export const PodLogsViewer: React.FC<PodLogsViewerProps> = ({
     }, []),
   });
 
-  // Filter logs based on level
+  // Filter logs based on level, container, and search (for grep mode)
   const filteredLogs = useMemo(() => {
-    if (logLevel === 'all') return logs;
-    return logs.filter(log => log.level === logLevel);
-  }, [logs, logLevel]);
+    let filtered = logs;
+    
+    // Filter by log level
+    if (logLevel !== 'all') {
+      filtered = filtered.filter(log => log.level === logLevel);
+    }
+    
+    // Filter by container
+    if (selectedContainer !== 'all') {
+      filtered = filtered.filter(log => log.container === selectedContainer);
+    }
+    
+    // Filter by search term (only for grep mode)
+    if (searchTerm && searchMode === 'grep') {
+      try {
+        const grepPattern = searchTerm
+          .replace(/\*/g, '.*')  // * becomes .*
+          .replace(/\?/g, '.')   // ? becomes .
+          .replace(/\[([^\]]*)\]/g, '[$1]'); // character classes
+        const searchRegex = new RegExp(grepPattern, caseSensitive ? 'g' : 'gi');
+        filtered = filtered.filter(log => searchRegex.test(log.message));
+      } catch (error) {
+        // Invalid regex, fall back to simple search
+        const escapedTerm = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const searchRegex = new RegExp(escapedTerm, caseSensitive ? 'g' : 'gi');
+        filtered = filtered.filter(log => searchRegex.test(log.message));
+      }
+    }
+    
+    return filtered;
+   }, [logs, logLevel, selectedContainer, searchTerm, searchMode, caseSensitive]);
 
-  // Search functionality
-  useEffect(() => {
-    if (!searchTerm) {
-      setSearchResults([]);
-      setCurrentSearchIndex(-1);
-      setLogs(prevLogs => prevLogs.map(log => ({ ...log, searchMatch: false })));
-      return;
+  // Enhanced search functionality with regex and simple search support (grep filtering is handled in filteredLogs)
+  const performSearch = useCallback((logs: LogEntry[], term: string) => {
+    if (!term || searchMode === 'grep') {
+      // For grep mode, filtering is done in filteredLogs, so just return logs as-is
+      return { results: [], updatedLogs: logs.map(log => ({ ...log, searchMatch: false })) };
     }
 
     const results: number[] = [];
-    const updatedLogs = filteredLogs.map((log, index) => {
-      const matches = log.message.toLowerCase().includes(searchTerm.toLowerCase());
+    let searchRegex: RegExp;
+
+    try {
+      switch (searchMode) {
+        case 'regex':
+          searchRegex = new RegExp(term, caseSensitive ? 'g' : 'gi');
+          break;
+        default: // simple
+          const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          searchRegex = new RegExp(escapedTerm, caseSensitive ? 'g' : 'gi');
+      }
+    } catch (error) {
+      // Invalid regex, fall back to simple search
+      const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      searchRegex = new RegExp(escapedTerm, caseSensitive ? 'g' : 'gi');
+    }
+
+    const updatedLogs = logs.map((log, index) => {
+      const matches = searchRegex.test(log.message);
       if (matches) {
         results.push(index);
       }
       return { ...log, searchMatch: matches };
     });
+
+    return { results, updatedLogs };
+   }, [searchMode, caseSensitive]);
+
+  // Search functionality
+  useEffect(() => {
+    const { results, updatedLogs } = performSearch(filteredLogs, searchTerm);
     
-    setLogs(updatedLogs);
-    setSearchResults(results);
-    setCurrentSearchIndex(results.length > 0 ? 0 : -1);
-  }, [searchTerm, filteredLogs]);
+    setLogs(prevLogs => {
+       // Update search matches for all logs
+       return prevLogs.map(log => {
+         const matchingLog = updatedLogs.find(ul => ul.id === log.id);
+         return matchingLog ? { ...log, searchMatch: matchingLog.searchMatch } : { ...log, searchMatch: false };
+       });
+     });
+     
+     setSearchResults(results);
+      setCurrentSearchIndex(results.length > 0 ? 0 : -1);
+    }, [searchTerm, filteredLogs, performSearch]);
 
   // Auto-scroll to bottom when new logs arrive
   useEffect(() => {
@@ -363,6 +437,26 @@ export const PodLogsViewer: React.FC<PodLogsViewerProps> = ({
         
         {/* Controls */}
         <div className="flex flex-wrap items-center gap-4 text-sm">
+          {/* Container Filter */}
+          <div className="flex items-center gap-2">
+            <Filter className="w-4 h-4" />
+            <Select value={selectedContainer} onValueChange={setSelectedContainer}>
+              <SelectTrigger className="w-[140px] h-8">
+                <SelectValue placeholder="All containers" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All containers</SelectItem>
+                {availableContainers.map((container) => (
+                  <SelectItem key={container} value={container}>
+                    {container}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <Separator orientation="vertical" className="h-6" />
+
           {/* Search */}
           <div className="flex items-center gap-2">
             <Search className="w-4 h-4" />
@@ -372,6 +466,35 @@ export const PodLogsViewer: React.FC<PodLogsViewerProps> = ({
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-48 h-8"
             />
+            
+            {/* Search Mode Selector */}
+            <Select value={searchMode} onValueChange={(value: 'simple' | 'regex' | 'grep') => setSearchMode(value)}>
+              <SelectTrigger className="w-[100px] h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="simple">Simple</SelectItem>
+                <SelectItem value="regex">
+                  <div className="flex items-center">
+                    <Regex className="h-4 w-4 mr-2" />
+                    Regex
+                  </div>
+                </SelectItem>
+                <SelectItem value="grep">Grep</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {/* Case Sensitive Toggle */}
+            <Button
+              variant={caseSensitive ? "default" : "outline"}
+              size="sm"
+              onClick={() => setCaseSensitive(!caseSensitive)}
+              title="Case sensitive search"
+              className="h-8 px-2"
+            >
+              Aa
+            </Button>
+
             {searchResults.length > 0 && (
               <div className="flex items-center gap-1">
                 <span className="text-xs text-muted-foreground">
@@ -460,8 +583,7 @@ export const PodLogsViewer: React.FC<PodLogsViewerProps> = ({
         {/* Status */}
         <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span>
-            {filteredLogs.length} lines
-            {searchResults.length > 0 && ` • ${searchResults.length} matches`}
+            {searchResults.length > 0 && `${searchResults.length} matches`}
           </span>
           
           {wsError && (
