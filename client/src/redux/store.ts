@@ -102,6 +102,9 @@ import permissionErrorsSlice from '@/data/PermissionErrors/PermissionErrorsSlice
 import listTableRefreshSlice from '@/data/Misc/ListTableRefreshSlice';
 import nodeActionsSlice from '@/data/Clusters/Nodes/NodeActionsSlice';
 import persistentVolumeClaimScaleSlice from '@/data/Storages/PersistentVolumeClaims/PersistentVolumeClaimScaleSlice';
+import listTableNodeArchitectureSlice from '@/data/Misc/ListTableNodeArchitectureSlice';
+import listTableNodeConditionSlice from '@/data/Misc/ListTableNodeConditionSlice';
+import listTableNodeOperatingSystemSlice from '@/data/Misc/ListTableNodeOperatingSystemSlice';
 
 const store = configureStore({
   reducer: {
@@ -209,6 +212,9 @@ const store = configureStore({
     persistentVolumeClaimScale: persistentVolumeClaimScaleSlice,
     secretDependencies: secretDependenciesSlice,
     configMapDependencies: configMapDependenciesSlice,
+    listTableNodeArchitecture: listTableNodeArchitectureSlice,
+    listTableNodeCondition: listTableNodeConditionSlice,
+    listTableNodeOperatingSystem: listTableNodeOperatingSystemSlice,
   },
 });
 

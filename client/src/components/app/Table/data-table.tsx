@@ -36,6 +36,7 @@ type DataTableProps<TData, TValue> = {
   showNamespaceFilter: boolean;
   showPodFilters?: boolean;
   showStatusFilter?: boolean;
+  showNodeFilters?: boolean;
   instanceType: string;
   showToolbar?: boolean;
   loading?: boolean;
@@ -73,6 +74,7 @@ export function DataTable<TData, TValue>({
   showNamespaceFilter,
   showPodFilters = false,
   showStatusFilter = false,
+  showNodeFilters = false,
   instanceType,
   showToolbar = true,
   loading = false,
@@ -95,6 +97,15 @@ export function DataTable<TData, TValue>({
   const {
     selectedQos
   } = useAppSelector((state: RootState) => state.listTableQos);
+  const {
+    selectedArchitectures
+  } = useAppSelector((state: RootState) => state.listTableNodeArchitecture);
+  const {
+    selectedConditions
+  } = useAppSelector((state: RootState) => state.listTableNodeCondition);
+  const {
+    selectedOperatingSystems
+  } = useAppSelector((state: RootState) => state.listTableNodeOperatingSystem);
 
   const getDefaultValue = () => {
     const filters = [];
@@ -122,6 +133,24 @@ export function DataTable<TData, TValue>({
         value: Array.from(selectedQos)
       });
     }
+    if (selectedArchitectures.length > 0) {
+       filters.push({
+         id: 'architecture',
+         value: Array.from(selectedArchitectures)
+       });
+     }
+     if (selectedConditions.length > 0) {
+       filters.push({
+         id: 'conditionStatus',
+         value: Array.from(selectedConditions)
+       });
+     }
+     if (selectedOperatingSystems.length > 0) {
+       filters.push({
+         id: 'operatingSystem',
+         value: Array.from(selectedOperatingSystems)
+       });
+     }
     return filters;
   };
   const [rowSelection, setRowSelection] = useState({});
@@ -173,7 +202,7 @@ export function DataTable<TData, TValue>({
     <>
       {
         showToolbar
-        && <DataTableToolbar loading={loading} table={table} globalFilter={globalFilter} setGlobalFilter={setGlobalFilter} showNamespaceFilter={showNamespaceFilter} showPodFilters={showPodFilters} showStatusFilter={showStatusFilter} podData={data} helmReleasesData={data} connectionStatus={connectionStatus} />
+        && <DataTableToolbar loading={loading} table={table} globalFilter={globalFilter} setGlobalFilter={setGlobalFilter} showNamespaceFilter={showNamespaceFilter} showPodFilters={showPodFilters} showStatusFilter={showStatusFilter} showNodeFilters={showNodeFilters} podData={data} helmReleasesData={data} nodeData={data} connectionStatus={connectionStatus} />
       }
       {
          

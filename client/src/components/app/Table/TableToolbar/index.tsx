@@ -13,11 +13,14 @@ import { RootState } from "@/redux/store";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Table } from "@tanstack/react-table";
-import { namespacesFilter, nodesFilter, statusFilter, qosFilter, helmReleasesStatusFilter } from "@/utils";
+import { namespacesFilter, nodesFilter, statusFilter, qosFilter, helmReleasesStatusFilter, nodeArchitectureFilter, nodeConditionFilter, nodeOperatingSystemFilter } from "@/utils";
 import { resetFilterNamespace } from "@/data/Misc/ListTableNamesapceSlice";
 import { resetFilterNode, updateFilterNode } from "@/data/Misc/ListTableNodeSlice";
 import { resetFilterStatus, updateFilterStatus } from "@/data/Misc/ListTableStatusSlice";
 import { resetFilterQos, updateFilterQos } from "@/data/Misc/ListTableQosSlice";
+import { resetFilterNodeArchitecture, updateFilterNodeArchitecture } from "@/data/Misc/ListTableNodeArchitectureSlice";
+import { resetFilterNodeCondition, updateFilterNodeCondition } from "@/data/Misc/ListTableNodeConditionSlice";
+import { resetFilterNodeOperatingSystem, updateFilterNodeOperatingSystem } from "@/data/Misc/ListTableNodeOperatingSystemSlice";
 import { updateListTableFilter } from "@/data/Misc/ListTableFilterSlice";
 import { Kbd } from "@/components/ui/kbd";
 import { ConnectionStatusDot } from "@/components/app/Common/ConnectionStatus";
@@ -34,8 +37,10 @@ type DataTableToolbarProps<TData> = {
   showNamespaceFilter: boolean;
   showPodFilters?: boolean;
   showStatusFilter?: boolean;
+  showNodeFilters?: boolean;
   podData?: any[];
   helmReleasesData?: any[];
+  nodeData?: any[];
   loading?: boolean;
   connectionStatus?: 'connecting' | 'connected' | 'reconnecting' | 'error';
 }
@@ -47,8 +52,10 @@ export function DataTableToolbar<TData>({
   showNamespaceFilter,
   showPodFilters = false,
   showStatusFilter = false,
+  showNodeFilters = false,
   podData = [],
   helmReleasesData = [],
+  nodeData = [],
   loading = true,
   connectionStatus = 'connected',
 }: DataTableToolbarProps<TData>) {
@@ -66,6 +73,15 @@ export function DataTableToolbar<TData>({
   const {
     selectedQos
   } = useAppSelector((state: RootState) => state.listTableQos);
+  const {
+    selectedArchitectures
+  } = useAppSelector((state: RootState) => state.listTableNodeArchitecture);
+  const {
+    selectedConditions
+  } = useAppSelector((state: RootState) => state.listTableNodeCondition);
+  const {
+    selectedOperatingSystems
+  } = useAppSelector((state: RootState) => state.listTableNodeOperatingSystem);
   
   // Extract config and cluster from URL
   const configName = router.location.pathname.split('/')[1];
@@ -166,7 +182,35 @@ export function DataTableToolbar<TData>({
             />
           </>
         )}
-        {isFiltered && (showNamespaceFilter || showPodFilters || showStatusFilter) && !loading && (
+        {showNodeFilters && !loading && nodeData && Array.isArray(nodeData) && nodeData.length > 0 && (
+          <>
+            <DataTableGenericFacetedFilter
+              column={table.getColumn("architecture")}
+              title="Architecture"
+              options={nodeArchitectureFilter(nodeData)}
+              selectedValues={selectedArchitectures}
+              onSelectionChange={(values) => dispatch(updateFilterNodeArchitecture(values))}
+              onReset={() => dispatch(resetFilterNodeArchitecture())}
+            />
+            <DataTableGenericFacetedFilter
+              column={table.getColumn("conditionStatus")}
+              title="Condition"
+              options={nodeConditionFilter(nodeData)}
+              selectedValues={selectedConditions}
+              onSelectionChange={(values) => dispatch(updateFilterNodeCondition(values))}
+              onReset={() => dispatch(resetFilterNodeCondition())}
+            />
+            <DataTableGenericFacetedFilter
+              column={table.getColumn("operatingSystem")}
+              title="Operating System"
+              options={nodeOperatingSystemFilter(nodeData)}
+              selectedValues={selectedOperatingSystems}
+              onSelectionChange={(values) => dispatch(updateFilterNodeOperatingSystem(values))}
+              onReset={() => dispatch(resetFilterNodeOperatingSystem())}
+            />
+          </>
+        )}
+        {isFiltered && (showNamespaceFilter || showPodFilters || showStatusFilter || showNodeFilters) && !loading && (
           <Button
             variant="ghost"
             onClick={() => { 
@@ -177,6 +221,11 @@ export function DataTableToolbar<TData>({
                 dispatch(resetFilterNode());
                 dispatch(resetFilterStatus());
                 dispatch(resetFilterQos());
+              }
+              if (showNodeFilters) {
+                dispatch(resetFilterNodeArchitecture());
+                dispatch(resetFilterNodeCondition());
+                dispatch(resetFilterNodeOperatingSystem());
               }
             }}
             className="h-8 px-2 lg:px-3 shadow-none"
