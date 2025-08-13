@@ -388,6 +388,7 @@ func (h *CloudShellHandler) CreateCloudShell(c *gin.Context) {
 							v1.ResourceMemory: resource.MustParse("1Gi"),
 						},
 					},
+					Command: []string{"/bin/sh", "-c", "sleep infinity"},
 					Env: []v1.EnvVar{
 						{
 							Name:  "KUBECONFIG",
@@ -559,8 +560,8 @@ func (h *CloudShellHandler) HandleCloudShellWebSocket(c *gin.Context) {
 		return
 	}
 
-	// Create terminal session using shared implementation
-	session := shared.NewTerminalSession(conn, h.logger)
+	// Create enhanced terminal session for better performance
+	session := shared.NewEnhancedTerminalSession(conn, h.logger)
 
 	// Start the exec session
 	err = exec.Stream(remotecommand.StreamOptions{
