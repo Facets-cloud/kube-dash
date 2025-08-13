@@ -10,12 +10,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 
 import { toast } from 'sonner';
 import {
-  Play,
-  Pause,
   Download,
   Search,
   Copy,
-  RotateCcw,
   ChevronUp,
   ChevronDown,
   Trash2,
@@ -171,9 +168,6 @@ export const PodLogsViewer: React.FC<PodLogsViewerProps> = ({
     isConnected,
     isConnecting,
     error: wsError,
-    connect,
-    disconnect,
-    reconnect,
   } = usePodLogsWebSocket({
     podName,
     namespace,
@@ -412,27 +406,7 @@ export const PodLogsViewer: React.FC<PodLogsViewerProps> = ({
             </Badge>
           </CardTitle>
           
-          <div className="flex items-center gap-2">
-            {/* Connection controls */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={isPaused ? connect : disconnect}
-              className="flex items-center gap-1"
-            >
-              {isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
-              {isPaused ? 'Resume' : 'Pause'}
-            </Button>
-            
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={reconnect}
-              disabled={isConnecting}
-            >
-              <RotateCcw className="w-4 h-4" />
-            </Button>
-          </div>
+
         </div>
         
         {/* Controls */}

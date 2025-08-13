@@ -13,6 +13,7 @@ import { DeleteConfiguration } from './DeleteConfiguration';
 import { Input } from '@/components/ui/input';
 import { ReloadIcon } from '@radix-ui/react-icons';
 import { ClusterStatusCell } from './ClusterStatusCell';
+import { ThemeModeSelector } from '../Common/ThemeModeSelector';
 import { fetchClusters } from '@/data/KwClusters/ClustersSlice';
 import { validateAllConfigs, resetValidateAllConfigs } from '@/data/KwClusters/ValidateAllConfigsSlice';
 import { getSystemTheme } from '@/utils';
@@ -205,6 +206,11 @@ export function KubeConfiguration() {
 
   return (
     <>
+      {/* Floating Theme Switcher */}
+      <div className="fixed bottom-6 right-6 z-50">
+        <ThemeModeSelector />
+      </div>
+      
       <div className='h-screen px-[1%] py-[1%]'>
         <div className="flex flex-col space-y-8 md:flex p-2">
           <div className="flex items-center justify-between">
