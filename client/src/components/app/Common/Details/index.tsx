@@ -2,7 +2,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useDetailsWrapper, useFetchDataForDetails } from "../Hooks/Details";
 
-import { CaretLeftIcon, CubeIcon } from "@radix-ui/react-icons";
+import { CaretLeftIcon, UpdateIcon } from "@radix-ui/react-icons";
 import helmLogo from '../../../../assets/helm-logo.png';
 import { Events } from "../../Details/Events";
 import FourOFourError from "../../Errors/404Error";
@@ -41,7 +41,8 @@ import { HelmReleaseValues } from "../../Details/HelmReleaseValues";
 import { HelmReleaseResources } from "../../Details/HelmReleaseResources";
 import { RollbackHelmRelease } from "@/components/HelmReleases/RollbackHelmRelease";
 import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { HelmChartUpgradeDialog } from "@/components/app/HelmCharts/HelmChartUpgradeDialog";
+import { useState } from "react";
 
 const KwDetails = () => {
   const dispatch = useAppDispatch();
@@ -55,6 +56,7 @@ const KwDetails = () => {
   const { details: helmReleaseDetails } = useAppSelector((state: RootState) => state.helmReleaseDetails);
   const queryParamsObj: Record<string, string> = { config, cluster, namespace: namespace || '' };
   const hasShownConfigNotFoundToast = useRef(false);
+  const [upgradeDialogOpen, setUpgradeDialogOpen] = useState(false);
   
   useEffect(() => {
     dispatch(resetYamlDetails());
@@ -213,19 +215,10 @@ const KwDetails = () => {
                         clusterName={cluster}
                         history={helmReleaseDetails.history || []}
                       />
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button variant="outline" disabled className="justify-start" size="sm">
-                              <CubeIcon className="h-3 w-3 mr-1" />
-                              Upgrade
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>Coming Soon</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
+                      <Button variant="outline" className="justify-start" size="sm" onClick={() => setUpgradeDialogOpen(true)}>
+                        <UpdateIcon className="h-3 w-3 mr-1" />
+                        Upgrade
+                      </Button>
                     </>
                   )}
                   <TableDelete selectedRows={[]} />
@@ -343,6 +336,15 @@ const KwDetails = () => {
             </>
         }
       </div>
+      {resourcekind === HELM_RELEASES_ENDPOINT && helmReleaseDetails && (
+        <HelmChartUpgradeDialog
+          open={upgradeDialogOpen}
+          onOpenChange={setUpgradeDialogOpen}
+          release={helmReleaseDetails.release}
+          clusterName={cluster}
+          configName={config}
+        />
+      )}
     </div>
   );
 };

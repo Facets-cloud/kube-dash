@@ -621,6 +621,7 @@ func (s *Server) setupRoutes() {
 		api.GET("/helmcharts/:packageId/versions", s.helmHandler.GetHelmChartVersions)
 		api.GET("/helmcharts/:packageId/:version/templates", s.helmHandler.GetHelmChartTemplates)
 		api.POST("/helmcharts/install", s.helmHandler.InstallHelmChart)
+		api.POST("/helmcharts/upgrade", s.helmHandler.UpgradeHelmChart)
 
 		// Cloud Shell endpoints
 		api.POST("/cloudshell", s.cloudShellHandler.CreateCloudShell)

@@ -5,6 +5,7 @@ import { API_VERSION } from '@/constants/ApiConstants';
 interface HelmActionsState {
   rollbackLoading: boolean;
   testLoading: boolean;
+  upgradeLoading: boolean;
   error: string | null;
   lastAction: string | null;
 }
@@ -12,6 +13,7 @@ interface HelmActionsState {
 const initialState: HelmActionsState = {
   rollbackLoading: false,
   testLoading: false,
+  upgradeLoading: false,
   error: null,
   lastAction: null,
 };
@@ -85,6 +87,55 @@ export const testHelmRelease = createAsyncThunk(
   }
 );
 
+// Async thunk for upgrading a Helm release
+export const upgradeHelmRelease = createAsyncThunk(
+  'helmActions/upgrade',
+  async ({
+    config,
+    cluster,
+    name,
+    namespace,
+    chart,
+    repository,
+    version,
+    values,
+  }: {
+    config: string;
+    cluster: string;
+    name: string;
+    namespace: string;
+    chart: string;
+    repository?: string;
+    version: string;
+    values?: string;
+  }) => {
+    const response = await kwFetch(
+      `${API_VERSION}/helmcharts/upgrade?config=${config}&cluster=${cluster}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name,
+          namespace,
+          chart,
+          repository,
+          version,
+          values,
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Failed to upgrade release');
+    }
+
+    return await response.json();
+  }
+);
+
 const helmActionsSlice = createSlice({
   name: 'helmActions',
   initialState,
@@ -125,6 +176,20 @@ const helmActionsSlice = createSlice({
       .addCase(testHelmRelease.rejected, (state, action) => {
         state.testLoading = false;
         state.error = action.error.message || 'Failed to test release';
+      })
+      // Upgrade cases
+      .addCase(upgradeHelmRelease.pending, (state) => {
+        state.upgradeLoading = true;
+        state.error = null;
+      })
+      .addCase(upgradeHelmRelease.fulfilled, (state) => {
+        state.upgradeLoading = false;
+        state.lastAction = 'upgrade';
+        state.error = null;
+      })
+      .addCase(upgradeHelmRelease.rejected, (state, action) => {
+        state.upgradeLoading = false;
+        state.error = action.error.message || 'Failed to upgrade release';
       });
   },
 });

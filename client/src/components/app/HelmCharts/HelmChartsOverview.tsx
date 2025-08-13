@@ -266,8 +266,8 @@ export function HelmChartsOverview({ }: HelmChartsOverviewProps) {
                             }}
                           />
                         ) : (
-                          <div className="w-12 h-12 bg-gray-200 rounded-lg flex items-center justify-center">
-                            <GlobeIcon className="h-6 w-6 text-gray-500" />
+                          <div className="w-12 h-12 rounded-lg flex items-center justify-center bg-gray-200 dark:bg-gray-800">
+                            <GlobeIcon className="h-6 w-6 text-gray-500 dark:text-gray-300" />
                           </div>
                         )}
                       </div>
@@ -275,10 +275,10 @@ export function HelmChartsOverview({ }: HelmChartsOverviewProps) {
                       {/* Chart Info */}
                       <div className="flex-1 flex flex-col justify-between min-h-0">
                         <div className="text-center mb-2">
-                          <h3 className="text-xs font-semibold text-gray-900 truncate mb-1">
+                          <h3 className="text-xs font-semibold text-gray-900 dark:text-gray-100 truncate mb-1">
                             {chart.name}
                           </h3>
-                          <p className="text-xs text-gray-600 line-clamp-2 h-6 leading-3">
+                          <p className="text-xs text-gray-600 dark:text-gray-300 line-clamp-2 h-6 leading-3">
                             {chart.description || 'No description available'}
                           </p>
                         </div>
@@ -293,7 +293,7 @@ export function HelmChartsOverview({ }: HelmChartsOverviewProps) {
                               v{chart.version}
                             </Badge>
                           </div>
-                          <span className="text-xs text-gray-500 flex items-center gap-1">
+                           <span className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
                             <ClockIcon className="h-3 w-3" />
                             {formatDate(chart.created)}
                           </span>

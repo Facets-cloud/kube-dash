@@ -2,8 +2,11 @@ package helm
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -50,20 +53,25 @@ type HelmHandler struct {
 	// Artifact Hub package ID -> repository path mapping (e.g., helm/<repo>/<chart>)
 	pkgIDRepoPath map[string]string
 	pkgMux        sync.RWMutex
+
+	// Cache for quick chart name -> repo path resolution to avoid repeated AH searches
+	chartNameRepoPath map[string]string
+	chartNameMux      sync.RWMutex
 }
 
 // NewHelmHandler creates a new Helm handler
 func NewHelmHandler(store *storage.KubeConfigStore, clientFactory *k8s.ClientFactory, helmFactory *k8s.HelmClientFactory, log *logger.Logger) *HelmHandler {
 	handler := &HelmHandler{
-		store:         store,
-		clientFactory: clientFactory,
-		helmFactory:   helmFactory,
-		logger:        log,
-		yamlHandler:   utils.NewYAMLHandler(log),
-		sseHandler:    utils.NewSSEHandler(log),
-		cache:         make(map[string]CacheEntry),
-		cacheTTL:      120 * time.Second, // Increased to 2 minutes for better performance
-		pkgIDRepoPath: make(map[string]string),
+		store:             store,
+		clientFactory:     clientFactory,
+		helmFactory:       helmFactory,
+		logger:            log,
+		yamlHandler:       utils.NewYAMLHandler(log),
+		sseHandler:        utils.NewSSEHandler(log),
+		cache:             make(map[string]CacheEntry),
+		cacheTTL:          120 * time.Second, // Increased to 2 minutes for better performance
+		pkgIDRepoPath:     make(map[string]string),
+		chartNameRepoPath: make(map[string]string),
 	}
 
 	// Start background cache cleanup
@@ -1290,7 +1298,8 @@ func (h *HelmHandler) RollbackHelmRelease(c *gin.Context) {
 
 	// Create rollback client
 	rollbackClient := action.NewRollback(actionConfig)
-	rollbackClient.Wait = true
+	// Fire-and-forget: do not wait for resources to become ready
+	rollbackClient.Wait = false
 	rollbackClient.Timeout = 300 * time.Second // 5 minutes timeout
 	rollbackClient.Version = req.Revision
 
@@ -1368,6 +1377,8 @@ func (h *HelmHandler) InstallHelmChart(c *gin.Context) {
 	install.ReleaseName = installRequest.Name
 	install.Namespace = installRequest.Namespace
 	install.CreateNamespace = true
+	// Fire-and-forget: do not wait for resources to become ready
+	install.Wait = false
 	if installRequest.Version != "" {
 		install.Version = installRequest.Version
 	}
@@ -1403,7 +1414,7 @@ func (h *HelmHandler) InstallHelmChart(c *gin.Context) {
 		}
 	}
 
-	// Run install (synchronous)
+	// Run install (do not block for readiness)
 	rel, err := install.Run(ch, vals)
 	if err != nil {
 		// Improve error reporting for UI consumers
@@ -1435,4 +1446,171 @@ func (h *HelmHandler) InstallHelmChart(c *gin.Context) {
 			"status":    rel.Info.Status,
 		},
 	})
+}
+
+// UpgradeHelmChart upgrades an existing Helm release
+func (h *HelmHandler) UpgradeHelmChart(c *gin.Context) {
+	var upgradeRequest struct {
+		Name       string `json:"name" binding:"required"`
+		Namespace  string `json:"namespace"`
+		Chart      string `json:"chart" binding:"required"`
+		Repository string `json:"repository"`
+		Version    string `json:"version" binding:"required"`
+		Values     string `json:"values"`
+	}
+
+	if err := c.ShouldBindJSON(&upgradeRequest); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if upgradeRequest.Namespace == "" {
+		upgradeRequest.Namespace = "default"
+	}
+
+	// Get client and config
+	config, err := h.getClientAndConfig(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	cluster := c.Query("cluster")
+
+	// Parse custom values if provided
+	var values map[string]interface{}
+	if upgradeRequest.Values != "" {
+		if err := yaml.Unmarshal([]byte(upgradeRequest.Values), &values); err != nil {
+			h.logger.Error("Failed to parse custom values", "error", err)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid YAML in custom values"})
+			return
+		}
+	}
+
+	// Build Helm action config
+	actionConfig, err := h.helmFactory.GetHelmClientForConfig(config, cluster)
+	if err != nil {
+		h.logger.Error("Failed to get Helm client for upgrade", "error", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("failed to get Helm client: %v", err)})
+		return
+	}
+
+	upgrade := action.NewUpgrade(actionConfig)
+	upgrade.Namespace = upgradeRequest.Namespace
+	// Fire-and-forget: do not wait for resources to become ready
+	upgrade.Wait = false
+	upgrade.Timeout = 300 * time.Second // 5 minutes timeout
+	if upgradeRequest.Version != "" {
+		upgrade.Version = upgradeRequest.Version
+	}
+
+	// Configure repo URL. If not provided, try resolving via Artifact Hub by chart name
+	if upgradeRequest.Repository != "" {
+		upgrade.ChartPathOptions.RepoURL = upgradeRequest.Repository
+	} else {
+		if repoURL, ok := h.resolveRepoURLFromChartName(upgradeRequest.Chart, c.Query("repository")); ok {
+			upgrade.ChartPathOptions.RepoURL = repoURL
+		}
+	}
+	upgrade.ChartPathOptions.Version = upgradeRequest.Version
+	chartRef := upgradeRequest.Chart
+
+	// Load chart
+	chartPath, err := upgrade.LocateChart(chartRef, cli.New())
+	if err != nil {
+		h.logger.Error("Failed to locate chart", "chart", chartRef, "error", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("failed to locate chart: %v", err)})
+		return
+	}
+	ch, err := loader.Load(chartPath)
+	if err != nil {
+		h.logger.Error("Failed to load chart", "path", chartPath, "error", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("failed to load chart: %v", err)})
+		return
+	}
+
+	// Parse values again into map for Helm
+	vals := map[string]interface{}{}
+	if upgradeRequest.Values != "" {
+		if err := yaml.Unmarshal([]byte(upgradeRequest.Values), &vals); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid YAML in custom values"})
+			return
+		}
+	}
+
+	// Run upgrade (do not block for readiness)
+	rel, err := upgrade.Run(upgradeRequest.Name, ch, vals)
+	if err != nil {
+		// Improve error reporting for UI consumers
+		msg := err.Error()
+		h.logger.Error("Helm upgrade failed", "release", upgradeRequest.Name, "error", err)
+		c.JSON(http.StatusUnprocessableEntity, gin.H{
+			"error":   "helm upgrade failed",
+			"details": msg,
+		})
+		return
+	}
+
+	// Clear releases cache
+	configID := c.Query("config")
+	cacheKey := h.getCacheKey("helmreleases", configID, cluster, "")
+	h.cacheMux.Lock()
+	delete(h.cache, cacheKey)
+	h.cacheMux.Unlock()
+
+	h.logger.Info("Helm upgrade succeeded", "release", rel.Name, "namespace", rel.Namespace, "chart", rel.Chart.Metadata.Name, "version", rel.Chart.Metadata.Version)
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": fmt.Sprintf("Upgraded %s to version %s", rel.Name, rel.Chart.Metadata.Version),
+		"release": map[string]interface{}{
+			"name":      rel.Name,
+			"namespace": rel.Namespace,
+			"chart":     rel.Chart.Metadata.Name,
+			"version":   rel.Chart.Metadata.Version,
+			"status":    rel.Info.Status,
+		},
+	})
+}
+
+// resolveRepoURLFromChartName searches Artifact Hub for a chart name and returns the
+// repository URL suitable for Helm's ChartPathOptions.RepoURL. If repositoryFilter
+// is provided, results are biased towards that repository name.
+func (h *HelmHandler) resolveRepoURLFromChartName(chartName, repositoryFilter string) (string, bool) {
+	chartName = strings.TrimSpace(chartName)
+	if chartName == "" {
+		return "", false
+	}
+	searchURL := fmt.Sprintf(
+		"https://artifacthub.io/api/v1/packages/search?kind=0&ts_query_web=%s&limit=%d",
+		url.QueryEscape(chartName), 25,
+	)
+	client := &http.Client{Timeout: 30 * time.Second}
+	req, _ := http.NewRequest("GET", searchURL, nil)
+	req.Header.Set("User-Agent", "kube-dash/1.0")
+	resp, err := client.Do(req)
+	if err != nil {
+		h.logger.Warn("Artifact Hub search failed", "error", err, "chart", chartName)
+		return "", false
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		h.logger.Warn("Artifact Hub search non-200", "status", resp.StatusCode, "chart", chartName)
+		return "", false
+	}
+	var search ArtifactHubResponse
+	if err := json.NewDecoder(resp.Body).Decode(&search); err != nil {
+		h.logger.Warn("Failed to decode Artifact Hub search", "error", err)
+		return "", false
+	}
+	for _, p := range search.Packages {
+		if strings.EqualFold(p.Name, chartName) {
+			if repositoryFilter == "" || strings.EqualFold(p.Repository.Name, repositoryFilter) || strings.EqualFold(p.Repository.DisplayName, repositoryFilter) || strings.EqualFold(p.Repository.Organization.Name, repositoryFilter) {
+				return p.Repository.URL, true
+			}
+		}
+	}
+	// Fallback: first result
+	if len(search.Packages) > 0 {
+		return search.Packages[0].Repository.URL, search.Packages[0].Repository.URL != ""
+	}
+	return "", false
 }

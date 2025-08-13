@@ -13,7 +13,6 @@ import { RootState } from "@/redux/store";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Table } from "@tanstack/react-table";
-import { ThemeModeSelector } from "@/components/app/Common/ThemeModeSelector";
 import { namespacesFilter, nodesFilter, statusFilter, qosFilter, helmReleasesStatusFilter } from "@/utils";
 import { resetFilterNamespace } from "@/data/Misc/ListTableNamesapceSlice";
 import { resetFilterNode, updateFilterNode } from "@/data/Misc/ListTableNodeSlice";
@@ -214,7 +213,6 @@ export function DataTableToolbar<TData>({
         />
       )}
       <AddResource />
-      <ThemeModeSelector />
     </div>
   );
 }

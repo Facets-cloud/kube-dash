@@ -4,15 +4,14 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/gin-gonic/gin"
 )
@@ -94,6 +93,103 @@ type ArtifactHubResponse struct {
 		} `json:"stats"`
 		CreatedAt int64 `json:"ts"`
 	} `json:"packages"`
+}
+
+// resolveRepoPathFromPackageOrName attempts to resolve a usable Artifact Hub
+// repository path (helm/<repo>/<chart>) from a provided identifier.
+// The identifier may be:
+// - a known package ID previously cached via search
+// - a full repo path already (e.g., helm/bitnami/kafka)
+// - a plain chart name (e.g., kafka) – in this case we search Artifact Hub
+// Optionally respects a `repository` query parameter to narrow matches.
+func (h *HelmHandler) resolveRepoPathFromPackageOrName(c *gin.Context, packageOrName string) (string, bool) {
+	// Quick cache: chart name -> repo path
+	h.chartNameMux.RLock()
+	if rp, ok := h.chartNameRepoPath[packageOrName]; ok && rp != "" {
+		h.chartNameMux.RUnlock()
+		return rp, true
+	}
+	h.chartNameMux.RUnlock()
+	// 1) Check mapping cache first (populated during search calls)
+	if repoPath, ok := h.packageIDToRepoPath(packageOrName); ok {
+		return repoPath, true
+	}
+
+	// 2) If it looks like a repo path already, accept as-is
+	if strings.Count(packageOrName, "/") >= 2 {
+		return packageOrName, true
+	}
+
+	// 3) Fallback: search Artifact Hub by chart name
+	chartName := strings.TrimSpace(packageOrName)
+	if chartName == "" {
+		return "", false
+	}
+
+	repoFilter := strings.TrimSpace(c.Query("repository"))
+
+	searchURL := fmt.Sprintf(
+		"https://artifacthub.io/api/v1/packages/search?kind=0&ts_query_web=%s&limit=%d",
+		url.QueryEscape(chartName), 25,
+	)
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	req, _ := http.NewRequest("GET", searchURL, nil)
+	req.Header.Set("User-Agent", "kube-dash/1.0")
+	resp, err := client.Do(req)
+	if err != nil {
+		h.logger.Warn("Artifact Hub search failed", "error", err, "chart", chartName)
+		return "", false
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		h.logger.Warn("Artifact Hub search returned non-200", "status", resp.StatusCode, "chart", chartName)
+		return "", false
+	}
+
+	var search ArtifactHubResponse
+	if err := json.NewDecoder(resp.Body).Decode(&search); err != nil {
+		h.logger.Warn("Failed to decode Artifact Hub search response", "error", err)
+		return "", false
+	}
+
+	// Choose best match:
+	// - Prefer exact name match
+	// - If repository filter is provided, prefer that repository
+	// - Otherwise, just take the first result
+	type candidate struct {
+		repo string
+		name string
+		pkg  string
+	}
+	var chosen *candidate
+	for _, p := range search.Packages {
+		if strings.EqualFold(p.Name, chartName) {
+			if repoFilter == "" || strings.EqualFold(p.Repository.Name, repoFilter) || strings.EqualFold(p.Repository.DisplayName, repoFilter) || strings.EqualFold(p.Repository.Organization.Name, repoFilter) {
+				cnd := &candidate{repo: p.Repository.Name, name: p.Name, pkg: p.PackageID}
+				chosen = cnd
+				break
+			}
+		}
+		if chosen == nil {
+			// fallback candidate if no exact+repo match found yet
+			chosen = &candidate{repo: p.Repository.Name, name: p.Name, pkg: p.PackageID}
+		}
+	}
+
+	if chosen == nil || chosen.repo == "" || chosen.name == "" {
+		h.logger.Warn("No suitable chart found on Artifact Hub search", "chart", chartName, "repository", repoFilter)
+		return "", false
+	}
+
+	repoPath := fmt.Sprintf("helm/%s/%s", chosen.repo, chosen.name)
+	// Cache mapping for subsequent calls (helps templates, details, etc.)
+	h.setPackageRepoPath(chosen.pkg, chosen.repo, chosen.name)
+	// Save name cache
+	h.chartNameMux.Lock()
+	h.chartNameRepoPath[packageOrName] = repoPath
+	h.chartNameMux.Unlock()
+	return repoPath, true
 }
 
 // SearchHelmCharts searches for Helm charts using Artifact Hub API
@@ -363,10 +459,10 @@ func (h *HelmHandler) GetHelmChartVersions(c *gin.Context) {
 		return
 	}
 
-	// Try to get repository path from package ID
-	repoPath, exists := h.packageIDToRepoPath(packageID)
-	if !exists {
-		h.logger.Warn("Package ID mapping not found", "packageId", packageID)
+	// Try to resolve repository path from provided identifier
+	repoPath, ok := h.resolveRepoPathFromPackageOrName(c, packageID)
+	if !ok {
+		h.logger.Warn("Unable to resolve repo path for versions", "identifier", packageID)
 		c.JSON(http.StatusOK, []map[string]interface{}{})
 		return
 	}
@@ -444,111 +540,120 @@ func (h *HelmHandler) GetHelmChartTemplates(c *gin.Context) {
 		return
 	}
 
-	// Artifact Hub endpoint for templates
-	apiURL := fmt.Sprintf("https://artifacthub.io/api/v1/packages/%s/%s/templates", packageID, version)
+	// Resolve repository path if needed
+	repoPath, ok := h.resolveRepoPathFromPackageOrName(c, packageID)
+	if !ok {
+		// Degrade gracefully: return empty list rather than hard error so the UI stays usable
+		h.logger.Warn("Unable to resolve repo path for templates", "identifier", packageID)
+		c.JSON(http.StatusOK, []map[string]string{})
+		return
+	}
 
+	// Fetch package version details to obtain content_url
+	detailsURL := fmt.Sprintf("https://artifacthub.io/api/v1/packages/%s/%s", repoPath, version)
 	client := &http.Client{Timeout: 30 * time.Second}
-	req, err := http.NewRequest("GET", apiURL, nil)
+	req, err := http.NewRequest("GET", detailsURL, nil)
 	if err != nil {
-		h.logger.Error("Failed to create request for templates", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create request"})
+		h.logger.Error("Failed to create request for package version details", "error", err)
+		c.JSON(http.StatusOK, []map[string]string{})
 		return
 	}
 	req.Header.Set("User-Agent", "kube-dash/1.0")
 
 	resp, err := client.Do(req)
 	if err != nil {
-		h.logger.Error("Failed to fetch templates from Artifact Hub", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch templates"})
+		h.logger.Error("Failed to fetch package version details from Artifact Hub", "error", err)
+		c.JSON(http.StatusOK, []map[string]string{})
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		h.logger.Error("Artifact Hub API returned non-200 status for templates", "status", resp.StatusCode, "packageId", packageID, "version", version)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch templates from Artifact Hub"})
+		h.logger.Error("Artifact Hub API returned non-200 for package version details", "status", resp.StatusCode, "repoPath", repoPath, "version", version)
+		c.JSON(http.StatusOK, []map[string]string{})
 		return
 	}
 
-	// Decode response generically, then normalize to { name, content }
-	var raw interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
-		h.logger.Error("Failed to decode templates response", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse templates"})
+	var versionDetails map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&versionDetails); err != nil {
+		h.logger.Error("Failed to decode version details", "error", err)
+		c.JSON(http.StatusOK, []map[string]string{})
 		return
 	}
 
-	// Normalize different possible shapes into a flat array of { name, content }
-	templates := []map[string]string{}
-
-	decodeBase64IfPossible := func(s string) string {
-		cleaned := strings.TrimSpace(s)
-		// Remove all whitespace characters (spaces, newlines, tabs)
-		cleaned = strings.Map(func(r rune) rune {
-			if unicode.IsSpace(r) {
-				return -1
-			}
-			return r
-		}, cleaned)
-		// Try standard base64
-		if decoded, err := base64.StdEncoding.DecodeString(cleaned); err == nil {
-			return string(decoded)
-		}
-		// Try raw base64 (no padding)
-		if decoded, err := base64.RawStdEncoding.DecodeString(cleaned); err == nil {
-			return string(decoded)
-		}
-		return s
+	cu, _ := versionDetails["content_url"].(string)
+	if strings.TrimSpace(cu) == "" {
+		h.logger.Warn("content_url not available in version details", "repoPath", repoPath, "version", version)
+		c.JSON(http.StatusOK, []map[string]string{})
+		return
 	}
 
-	switch v := raw.(type) {
-	case []interface{}:
-		for _, item := range v {
-			if m, ok := item.(map[string]interface{}); ok {
-				name := ""
-				content := ""
-				if n, ok := m["name"].(string); ok {
-					name = n
-				}
-				// Artifact Hub may use either "content" or "data" for the template body
-				if cstr, ok := m["content"].(string); ok {
-					content = decodeBase64IfPossible(cstr)
-				} else if cstr, ok := m["data"].(string); ok {
-					content = decodeBase64IfPossible(cstr)
-				}
-				if name != "" && content != "" {
-					templates = append(templates, map[string]string{
-						"name":    name,
-						"content": content,
-					})
-				}
-			}
-		}
-	case map[string]interface{}:
-		// Some responses might wrap templates inside a field like "templates"
-		if arr, ok := v["templates"].([]interface{}); ok {
-			for _, item := range arr {
-				if m, ok := item.(map[string]interface{}); ok {
-					name := ""
-					content := ""
-					if n, ok := m["name"].(string); ok {
-						name = n
-					}
-					if cstr, ok := m["content"].(string); ok {
-						content = decodeBase64IfPossible(cstr)
-					} else if cstr, ok := m["data"].(string); ok {
-						content = decodeBase64IfPossible(cstr)
-					}
-					if name != "" && content != "" {
-						templates = append(templates, map[string]string{
-							"name":    name,
-							"content": content,
-						})
-					}
-				}
-			}
-		}
+	templates, err := h.fetchTemplatesFromArtifactHub(cu)
+	if err != nil {
+		h.logger.Warn("Failed to extract templates from chart archive", "error", err)
+		c.JSON(http.StatusOK, []map[string]string{})
+		return
 	}
 
 	c.JSON(http.StatusOK, templates)
+}
+
+// fetchTemplatesFromArtifactHub downloads the chart archive from contentURL and extracts files under templates/
+func (h *HelmHandler) fetchTemplatesFromArtifactHub(contentURL string) ([]map[string]string, error) {
+	if strings.TrimSpace(contentURL) == "" {
+		return nil, fmt.Errorf("content_url not available")
+	}
+	client := &http.Client{Timeout: 60 * time.Second}
+	resp, err := client.Get(contentURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to download chart archive: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to download chart archive: status %d", resp.StatusCode)
+	}
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read chart archive: %w", err)
+	}
+
+	gzReader, err := gzip.NewReader(bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("failed to open gzip reader: %w", err)
+	}
+	defer gzReader.Close()
+
+	tarReader := tar.NewReader(gzReader)
+	templates := []map[string]string{}
+	for {
+		hdr, err := tarReader.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to read tar: %w", err)
+		}
+		if hdr == nil || hdr.FileInfo().IsDir() {
+			continue
+		}
+		nameLower := strings.ToLower(hdr.Name)
+		if strings.Contains(nameLower, "/templates/") {
+			contents, err := io.ReadAll(tarReader)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read template %s: %w", hdr.Name, err)
+			}
+			// Use path after the templates/ segment for display
+			displayName := hdr.Name
+			if idx := strings.Index(strings.ToLower(hdr.Name), "/templates/"); idx >= 0 {
+				displayName = hdr.Name[idx+len("/templates/"):]
+			}
+			templates = append(templates, map[string]string{
+				"name":    displayName,
+				"content": string(contents),
+			})
+		}
+	}
+	return templates, nil
 }

@@ -349,8 +349,8 @@ export function HelmChartInstallDialog({
             </div>
 
             {/* Right Panel - Values & Templates Editor */}
-            <div className="lg:col-span-2 flex flex-col overflow-hidden">
-              <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
+            <div className="lg:col-span-2 flex flex-col overflow-hidden min-h-0">
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0 h-[72vh]">
                 <TabsList className="grid w-full grid-cols-2 flex-shrink-0">
                   <TabsTrigger value="values" className="flex items-center gap-2">
                     <FileTextIcon className="h-4 w-4" />
@@ -362,8 +362,8 @@ export function HelmChartInstallDialog({
                   </TabsTrigger>
                 </TabsList>
                 
-                <TabsContent value="values" className="flex-1 mt-4 overflow-hidden">
-                  <div className="h-full flex flex-col">
+                <TabsContent value="values" className="flex-1 mt-4 overflow-hidden min-h-0">
+                  <div className="h-full flex flex-col min-h-0">
                     <div className="flex items-center justify-between mb-2 flex-shrink-0">
                       <Label className="text-sm font-medium">Custom Values (YAML)</Label>
                       <div className="flex items-center gap-2">
@@ -373,11 +373,11 @@ export function HelmChartInstallDialog({
                         </span>
                       </div>
                     </div>
-                    <div className="flex-1 border rounded-md overflow-hidden">
+                    <div className="flex-1 border rounded-md overflow-hidden min-h-0">
                       <Editor
                         value={installForm.values}
                         language="yaml"
-                        theme="light"
+                        theme="vs-dark"
                         onChange={(value) => setInstallForm(prev => ({ ...prev, values: value || '' }))}
                         options={{
                           minimap: { enabled: false },
@@ -392,19 +392,19 @@ export function HelmChartInstallDialog({
                   </div>
                 </TabsContent>
                 
-                <TabsContent value="templates" className="flex-1 mt-4 overflow-hidden">
-                  <div className="h-full flex flex-col">
+                <TabsContent value="templates" className="flex-1 mt-4 overflow-hidden min-h-0">
+                  <div className="h-full flex flex-col min-h-0">
                     <div className="flex items-center justify-between mb-2 flex-shrink-0">
                       <Label className="text-sm font-medium">Chart Templates</Label>
                       {loadingTemplates && <ReloadIcon className="h-4 w-4 animate-spin" />}
                     </div>
                     
                     {chartTemplates.length > 0 ? (
-                      <div className="flex-1 flex gap-4 overflow-hidden">
+                      <div className="flex-1 flex gap-4 overflow-hidden min-h-0">
                         {/* Template List */}
-                        <div className="w-48 flex-shrink-0">
-                          <ScrollArea className="h-full">
-                            <div className="space-y-1">
+                        <div className="w-56 flex-shrink-0">
+                          <ScrollArea className="h-[64vh] pr-2">
+                            <div className="space-y-1 pb-2">
                               {chartTemplates.map((template, index) => (
                                 <Button
                                   key={index}
@@ -426,12 +426,12 @@ export function HelmChartInstallDialog({
                         <Separator orientation="vertical" />
                         
                         {/* Template Content */}
-                        <div className="flex-1 overflow-hidden">
-                          <div className="h-full border rounded-md overflow-hidden">
+                        <div className="flex-1 overflow-hidden min-h-0">
+                          <div className="h-[64vh] border rounded-md overflow-hidden">
                             <Editor
                               value={chartTemplates[selectedTemplateIndex]?.content || ''}
                               language="yaml"
-                              theme="light"
+                              theme="vs-dark"
                               options={{
                                 readOnly: true,
                                 minimap: { enabled: false },

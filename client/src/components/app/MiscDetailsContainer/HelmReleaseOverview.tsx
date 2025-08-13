@@ -1,3 +1,4 @@
+import {} from 'react';
 import { useAppSelector } from '@/redux/hooks';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -7,15 +8,19 @@ import {
   ClockIcon, 
   CheckCircledIcon, 
   CrossCircledIcon, 
-  ExclamationTriangleIcon
+  ExclamationTriangleIcon,
+  
 } from '@radix-ui/react-icons';
 export function HelmReleaseOverview() {
   const { details } = useAppSelector((state) => state.helmReleaseDetails);
+  
   
   if (!details) return null;
 
   const { release, history } = details;
   const recentHistory = history?.slice(0, 5) || [];
+  
+  // Get cluster and config from URL or context (not used here anymore)
   
 
 
@@ -52,6 +57,7 @@ export function HelmReleaseOverview() {
 
 
   return (
+    <>
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
       {/* Recent History */}
       <Card>
@@ -102,9 +108,11 @@ export function HelmReleaseOverview() {
 
       {/* Release Statistics */}
       <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">Release Statistics</CardTitle>
-          <CardDescription>Summary of release information</CardDescription>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <div>
+            <CardTitle className="text-sm">Release Statistics</CardTitle>
+            <CardDescription>Summary of release information</CardDescription>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
@@ -145,5 +153,7 @@ export function HelmReleaseOverview() {
 
 
     </div>
+    
+    </>
   );
 }
