@@ -142,7 +142,7 @@ const KwDetails = () => {
         </span>
       </div>
 
-      <div className="min-h-screen flex-1 flex-col space-y-2 pt-0 p-2 md:flex">
+      <div className="h-[calc(100vh-4rem)] flex-1 flex-col space-y-2 pt-0 p-2 md:flex">
         {
           resourceInitialData?.loading ? <Loader /> :
             <>
@@ -309,7 +309,7 @@ const KwDetails = () => {
                   
                   {
                     resourcekind === PODS_ENDPOINT &&
-                    <TabsContent value='logs'>
+                    <TabsContent value='logs' className="h-full">
                       <PodLogs
                         name={podDetails?.metadata?.name}
                         configName={config}

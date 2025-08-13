@@ -18,6 +18,7 @@ import (
 	"github.com/Facets-cloud/kube-dash/internal/api/handlers/portforward"
 	storage_handlers "github.com/Facets-cloud/kube-dash/internal/api/handlers/storage"
 	"github.com/Facets-cloud/kube-dash/internal/api/handlers/websocket"
+	"github.com/Facets-cloud/kube-dash/internal/api/handlers/websockets"
 	"github.com/Facets-cloud/kube-dash/internal/api/handlers/workloads"
 	"github.com/Facets-cloud/kube-dash/internal/config"
 	"github.com/Facets-cloud/kube-dash/internal/k8s"
@@ -89,6 +90,7 @@ type Server struct {
 
 	// WebSocket handlers
 	podExecHandler     *websocket.PodExecHandler
+	podLogsHandler     *websockets.PodLogsHandler
 	portForwardHandler *portforward.PortForwardHandler
 
 	// Helm handlers
@@ -167,6 +169,7 @@ func New(cfg *config.Config) *Server {
 
 	// Create WebSocket handlers
 	podExecHandler := websocket.NewPodExecHandler(store, clientFactory, log)
+	podLogsHandler := websockets.NewPodLogsHandler(store, clientFactory, log)
 	portForwardHandler := portforward.NewPortForwardHandler(store, clientFactory, log)
 
 	// Create Helm handlers
@@ -238,6 +241,7 @@ func New(cfg *config.Config) *Server {
 
 		// WebSocket handlers
 		podExecHandler:     podExecHandler,
+		podLogsHandler:     podLogsHandler,
 		portForwardHandler: portForwardHandler,
 
 		// Helm handlers
@@ -439,12 +443,14 @@ func (s *Server) setupRoutes() {
 		api.GET("/pods/:namespace/:name", s.podsHandler.GetPod)
 		api.GET("/pods/:namespace/:name/yaml", s.podsHandler.GetPodYAML)
 		api.GET("/pods/:namespace/:name/events", s.podsHandler.GetPodEvents)
-		api.GET("/pods/:namespace/:name/logs", s.podsHandler.GetPodLogs)
+
+		api.GET("/pods/:namespace/:name/logs/ws", s.podLogsHandler.HandlePodLogs)
 		api.GET("/pods/:namespace/:name/metrics", s.podsHandler.GetPodMetricsHistory)
 		api.GET("/pod/:name", s.podsHandler.GetPodByName)
 		api.GET("/pod/:name/yaml", s.podsHandler.GetPodYAMLByName)
 		api.GET("/pod/:name/events", s.podsHandler.GetPodEventsByName)
-		api.GET("/pod/:name/logs", s.podsHandler.GetPodLogsByName)
+
+		api.GET("/pod/:name/logs/ws", s.podLogsHandler.HandlePodLogs)
 
 		// WebSocket routes for pod exec
 		api.GET("/pods/:namespace/:name/exec/ws", s.podExecHandler.HandlePodExec)
