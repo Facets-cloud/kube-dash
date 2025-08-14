@@ -21,7 +21,7 @@ import {
   TableHeader,
   TableRow
 } from "@/components/ui/table";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { DataTableToolbar } from "@/components/app/Table/TableToolbar";
 import { RootState } from "@/redux/store";
@@ -81,6 +81,14 @@ export function DataTable<TData, TValue>({
   isEventTable = false,
   connectionStatus = 'connected',
 }: DataTableProps<TData, TValue>) {
+
+  // --- Manual row virtualization (fixed-height rows) ---
+  // Keeps table semantics while rendering only visible rows
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const [containerHeight, setContainerHeight] = useState<number>(600);
+  const [scrollTop, setScrollTop] = useState<number>(0);
+  const rowHeight = 44; // px; keep in sync with table row CSS
+  const overscan = 10;
 
   const {
     searchString
@@ -180,6 +188,41 @@ export function DataTable<TData, TValue>({
     getRowId: row => row?.uid || row?.metadata?.uid,
   });
 
+  // Measure container height and subscribe to scroll/resize
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+
+    const handleResize = () => {
+      setContainerHeight(el.clientHeight || 600);
+    };
+    const handleScroll = () => {
+      setScrollTop(el.scrollTop || 0);
+    };
+
+    handleResize();
+    el.addEventListener('scroll', handleScroll, { passive: true });
+
+    const ro = new ResizeObserver(() => handleResize());
+    ro.observe(el);
+
+    return () => {
+      el.removeEventListener('scroll', handleScroll as EventListener);
+      ro.disconnect();
+    };
+  }, []);
+
+  // Virtualization calculations
+  const allRows = table.getRowModel().rows;
+  const totalRows = allRows.length;
+  const shouldVirtualize = !loading && totalRows > 150; // threshold
+  const startIndex = shouldVirtualize ? Math.max(0, Math.floor(scrollTop / rowHeight) - overscan) : 0;
+  const visibleCount = shouldVirtualize ? Math.ceil(containerHeight / rowHeight) + overscan * 2 : totalRows;
+  const endIndex = shouldVirtualize ? Math.min(totalRows, startIndex + visibleCount) : totalRows;
+  const visibleRows = shouldVirtualize ? allRows.slice(startIndex, endIndex) : allRows;
+  const topPadding = shouldVirtualize ? startIndex * rowHeight : 0;
+  const bottomPadding = shouldVirtualize ? Math.max(0, (totalRows - endIndex) * rowHeight) : 0;
+
   const getIdAndSetClass = (shouldSetClass: boolean, id: string) => {
     const safeId = typeof id === 'string' ? id : '';
     if (shouldSetClass && safeId) {
@@ -213,7 +256,7 @@ export function DataTable<TData, TValue>({
       }
       
       <div className={`border border-x-0 list-table-container ${tableWidthCss}`}>
-        <div className="list-table-scrollable">
+        <div className="list-table-scrollable" ref={scrollContainerRef}>
           <Table>
           <TableHeader className="bg-muted/50">
             {table.getHeaderGroups().map((headerGroup) => (
@@ -234,29 +277,42 @@ export function DataTable<TData, TValue>({
             ))}
           </TableHeader>
           <TableBody>
-            {table.getRowModel().rows?.length ? (
-              table.getRowModel().rows.map((row) => (
-                <TableRow
-                  key={row.id}
-                  id={getIdAndSetClass(
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    (row.original as any)?.hasUpdated,
-                    // Prefer metadata.name for objects that don't have top-level name
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    (row.original as any)?.name || (row.original as any)?.metadata?.name || ''
-                  )}
-                  data-state={row.getIsSelected() && 'selected'}
-                >
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext()
-                      )}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
+            {visibleRows?.length ? (
+              <>
+                {shouldVirtualize && topPadding > 0 && (
+                  <TableRow aria-hidden>
+                    <TableCell colSpan={columns.length} style={{ height: topPadding, padding: 0, border: 0 }} />
+                  </TableRow>
+                )}
+                {visibleRows.map((row) => (
+                  <TableRow
+                    key={row.id}
+                    id={getIdAndSetClass(
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      (row.original as any)?.hasUpdated,
+                      // Prefer metadata.name for objects that don't have top-level name
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      (row.original as any)?.name || (row.original as any)?.metadata?.name || ''
+                    )}
+                    data-state={row.getIsSelected() && 'selected'}
+                    style={shouldVirtualize ? { height: rowHeight } : undefined}
+                  >
+                    {row.getVisibleCells().map((cell) => (
+                      <TableCell key={cell.id}>
+                        {flexRender(
+                          cell.column.columnDef.cell,
+                          cell.getContext()
+                        )}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))}
+                {shouldVirtualize && bottomPadding > 0 && (
+                  <TableRow aria-hidden>
+                    <TableCell colSpan={columns.length} style={{ height: bottomPadding, padding: 0, border: 0 }} />
+                  </TableRow>
+                )}
+              </>
             ) : (
               <TableRow className={isEventTable ? 'empty-table-events' : 'empty-table'}>
                 <TableCell

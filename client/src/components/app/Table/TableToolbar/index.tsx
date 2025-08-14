@@ -1,4 +1,5 @@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { startTransition } from "react";
 import { useAppDispatch, useAppSelector } from "@/redux/hooks";
 import { useEffect } from "react";
 
@@ -129,8 +130,10 @@ export function DataTableToolbar<TData>({
             placeholder="Search..."
             value={globalFilter ?? ''}
             onChange={(value) => {
-              setGlobalFilter(String(value));
-              dispatch(updateListTableFilter(String(value)));
+              startTransition(() => {
+                setGlobalFilter(String(value));
+                dispatch(updateListTableFilter(String(value)));
+              });
             }}
             className="h-8 w-full shadow-none pr-10 pl-2" // add pr-10 to make space for kbd
           />
