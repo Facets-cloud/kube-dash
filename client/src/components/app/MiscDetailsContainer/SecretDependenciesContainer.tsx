@@ -1,38 +1,69 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { ExternalLinkIcon } from "@radix-ui/react-icons";
 import { createEventStreamQueryObject, getEventStreamUrl } from "@/utils";
 import { useAppDispatch, useAppSelector } from "@/redux/hooks";
 import { kwDetails, appRoute } from "@/routes";
-import { memo } from "react";
+import { memo, useCallback, useMemo } from "react";
 import { updateSecretDependencies } from "@/data/Configurations/Secrets/SecretDependenciesSlice";
 import { useEventSource } from "@/components/app/Common/Hooks/EventSource";
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { SECRET_ENDPOINT_SINGULAR } from "@/constants";
-import type { SecretDependencies, DependencyResource } from "@/data/Configurations/Secrets/SecretDependenciesSlice";
+import type { SecretDependencies } from "@/data/Configurations/Secrets/SecretDependenciesSlice";
+
+// Import new modular components
+import { ResourceList } from "./Dependencies/ResourceList";
+import { VirtualizedResourceList } from "./Dependencies/VirtualizedResourceList";
+import { ProgressiveResourceList } from "./Dependencies/ProgressiveResourceList";
+import { LoadingState } from "./Dependencies/LoadingState";
+import { NoDependenciesState, ErrorState } from "./Dependencies/EmptyState";
+import { usePerformanceMonitor } from "@/hooks/usePerformanceMonitor";
+import { useMemoryOptimization } from "@/hooks/useMemoryOptimization";
+import { cn } from "@/lib/utils";
 
 const SecretDependenciesContainer = memo(function () {
   const { config } = appRoute.useParams();
   const { cluster, resourcename, namespace } = kwDetails.useSearch();
   const {
     loading,
-    secretDependencies
+    secretDependencies,
+    error
   } = useAppSelector((state) => state.secretDependencies);
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
 
-  const sendMessage = (message: SecretDependencies) => {
-    dispatch(updateSecretDependencies(message));
-  };
+  // Calculate total dependency count for performance monitoring
+  const totalDependencyCount = useMemo(() => {
+    return Object.values(secretDependencies).reduce(
+      (total, deps) => total + (Array.isArray(deps) ? deps.length : 0),
+      0
+    );
+  }, [secretDependencies]);
 
-  const handleConfigError = () => {
+  // Performance monitoring
+  const { getPerformanceReport } = usePerformanceMonitor({
+    componentName: 'SecretDependenciesContainer',
+    itemCount: totalDependencyCount,
+    enabled: process.env.NODE_ENV === 'development',
+    logToConsole: totalDependencyCount > 50, // Log only for large datasets
+  });
+
+  // Memory optimization
+  useMemoryOptimization({
+    enabled: true,
+    cleanupInterval: 30000,
+    maxCacheSize: 500,
+  });
+
+  const sendMessage = useCallback((message: SecretDependencies) => {
+    dispatch(updateSecretDependencies(message));
+  }, [dispatch]);
+
+  const handleConfigError = useCallback(() => {
     toast.error("Configuration Error", {
       description: "The configuration you were viewing has been deleted or is no longer available. Redirecting to configuration page.",
     });
     navigate({ to: '/config' });
-  };
+  }, [navigate]);
 
   useEventSource({
     url: getEventStreamUrl(
@@ -48,102 +79,190 @@ const SecretDependenciesContainer = memo(function () {
     onConfigError: handleConfigError,
   });
 
-  const navigateToResource = (resourceType: string, resourceName: string, resourceNamespace: string) => {
-    navigate({ 
-      to: `/${config}/details?cluster=${encodeURIComponent(cluster)}&resourcekind=${resourceType}&resourcename=${encodeURIComponent(resourceName)}&namespace=${encodeURIComponent(resourceNamespace)}` 
+  const navigateToResource = useCallback((resourceType: string, resourceName: string, resourceNamespace: string) => {
+    const searchParams = new URLSearchParams({
+      cluster: cluster,
+      resourcekind: resourceType,
+      resourcename: resourceName,
+      namespace: resourceNamespace,
     });
-  };
+    
+    navigate({ 
+      to: `/${config}/details?${searchParams.toString()}` 
+    });
+  }, [navigate, config, cluster]);
 
-  const renderResourceList = (title: string, resources: DependencyResource[] | undefined, resourceType: string) => {
-    if (!resources || resources.length === 0) return null;
+  // Performance thresholds for different rendering strategies
+  const PROGRESSIVE_THRESHOLD = 20;
+  const VIRTUALIZATION_THRESHOLD = 100;
+  
+  // Helper function to determine which component to use based on data size
+  const getOptimalComponent = useCallback((resources: any[], title: string, resourceType: string, options: any = {}) => {
+    const count = resources?.length || 0;
+    
+    if (count > VIRTUALIZATION_THRESHOLD) {
+      return (
+        <VirtualizedResourceList
+          title={title}
+          resources={resources}
+          resourceType={resourceType}
+          onNavigate={navigateToResource}
+          defaultExpanded={true}
+          showSearch={count > 10}
+          virtualizationThreshold={VIRTUALIZATION_THRESHOLD}
+          itemHeight={100}
+          maxHeight={500}
+          className="border-border/30"
+          {...options}
+        />
+      );
+    } else if (count > PROGRESSIVE_THRESHOLD) {
+      return (
+        <ProgressiveResourceList
+          title={title}
+          resources={resources}
+          resourceType={resourceType}
+          onNavigate={navigateToResource}
+          defaultExpanded={true}
+          showSearch={count > 10}
+          initialItemCount={15}
+          incrementCount={25}
+          maxItemsBeforeVirtualization={VIRTUALIZATION_THRESHOLD}
+          className="border-border/30"
+          {...options}
+        />
+      );
+    } else {
+      return (
+        <ResourceList
+          title={title}
+          resources={resources}
+          resourceType={resourceType}
+          onNavigate={navigateToResource}
+          defaultExpanded={true}
+          showSearch={count > 5}
+          className="border-border/30"
+          {...options}
+        />
+      );
+    }
+  }, [navigateToResource]);
 
+  const handleRetry = useCallback(() => {
+    toast.info("Retrying...", {
+      description: "Attempting to reload dependency information.",
+    });
+    // The event source will automatically reconnect
+  }, []);
+
+  // Check if there are any dependencies
+  const hasAnyDependencies = useMemo(() => 
+    Object.values(secretDependencies).some(deps => Array.isArray(deps) && deps.length > 0),
+    [secretDependencies]
+  );
+
+  // Memoize performance report for development
+  const performanceReport = useMemo(() => {
+    if (process.env.NODE_ENV === 'development' && totalDependencyCount > 100) {
+      return getPerformanceReport();
+    }
+    return null;
+  }, [getPerformanceReport, totalDependencyCount]);
+
+  // Handle error state
+  if (error) {
     return (
-      <Card className="shadow-none rounded-lg mt-4">
-        <CardHeader className="p-4">
-          <CardTitle className="text-sm font-medium flex items-center justify-between">
-            {title}
-            <Badge variant="secondary" className="text-xs">
-              {resources.length}
-            </Badge>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="px-4">
-          <div className="space-y-2">
-            {resources.map((resource, index) => (
-              <div key={index} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors">
-                <div className="flex flex-col">
-                  <span className="font-medium text-sm">{resource.name}</span>
-                  <span className="text-xs text-muted-foreground">
-                    Namespace: {resource.namespace}
-                  </span>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => navigateToResource(resourceType, resource.name, resource.namespace)}
-                  className="h-8 w-8 p-0"
-                >
-                  <ExternalLinkIcon className="h-4 w-4" />
-                </Button>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-    );
-  };
-
-  const hasAnyDependencies = Object.values(secretDependencies).some(deps => Array.isArray(deps) && deps.length > 0);
-
-  if (loading) {
-    return (
-      <div className="mt-4">
-        <Card className="shadow-none rounded-lg">
-          <CardHeader className="p-4">
-            <CardTitle className="text-sm font-medium">Dependencies</CardTitle>
-          </CardHeader>
-          <CardContent className="px-4">
-            <div className="animate-pulse space-y-2">
-              <div className="h-4 bg-muted rounded w-3/4"></div>
-              <div className="h-4 bg-muted rounded w-1/2"></div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      <ErrorState 
+        onRetry={handleRetry}
+        className="mt-4"
+      />
     );
   }
 
+  // Handle loading state
+  if (loading) {
+    return (
+      <LoadingState 
+        showMultipleCards={true}
+        cardCount={2}
+        className="mt-4"
+      />
+    );
+  }
+
+  // Handle empty state
   if (!hasAnyDependencies) {
     return (
-      <div className="mt-4">
-        <Card className="shadow-none rounded-lg">
-          <CardHeader className="p-4">
-            <CardTitle className="text-sm font-medium">Dependencies</CardTitle>
-          </CardHeader>
-          <CardContent className="px-4">
-            <div className="text-center py-8 text-muted-foreground">
-              <p className="text-sm">No workloads are currently using this secret.</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      <NoDependenciesState 
+        resourceType="secret"
+        className="mt-4"
+      />
     );
   }
 
   return (
     <div className="mt-4">
-      <Card className="shadow-none rounded-lg">
-        <CardHeader className="p-4">
-          <CardTitle className="text-sm font-medium">Dependencies</CardTitle>
+      <Card className={cn(
+        "shadow-none rounded-lg border-border/50 bg-gradient-to-br from-card/80 to-card/40",
+        "backdrop-blur-sm"
+      )}>
+        <CardHeader className="p-4 border-b border-border/50">
+          <CardTitle className="text-sm font-medium flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <div className="h-2 w-2 rounded-full bg-primary/60 animate-pulse" />
+              <span>Dependencies</span>
+            </div>
+            <div className="flex items-center space-x-2 text-xs text-muted-foreground font-normal">
+              <span>{totalDependencyCount} total</span>
+              {process.env.NODE_ENV === 'development' && performanceReport && (
+                <span className="text-amber-600 dark:text-amber-400">
+                  • Avg: {performanceReport.averageRenderTime.toFixed(1)}ms
+                </span>
+              )}
+            </div>
+          </CardTitle>
         </CardHeader>
-        <CardContent className="px-4">
-          <div className="text-sm text-muted-foreground mb-4">
-            Workloads that use this secret:
+        <CardContent className="p-4">
+          <div className="text-sm text-muted-foreground mb-6 flex items-center space-x-2">
+            <span>Workloads that use this secret:</span>
           </div>
-          {renderResourceList("Pods", secretDependencies.pods, "pods")}
-          {renderResourceList("Deployments", secretDependencies.deployments, "deployments")}
-          {renderResourceList("Jobs", secretDependencies.jobs, "jobs")}
-          {renderResourceList("CronJobs", secretDependencies.cronjobs, "cronjobs")}
+          
+          <div className="space-y-4">
+            {secretDependencies.pods && secretDependencies.pods.length > 0 && 
+              getOptimalComponent(
+                secretDependencies.pods,
+                "Pods",
+                "pods",
+                { showStatus: true }
+              )
+            }
+            
+            {secretDependencies.deployments && secretDependencies.deployments.length > 0 && 
+              getOptimalComponent(
+                secretDependencies.deployments,
+                "Deployments",
+                "deployments"
+              )
+            }
+            
+            {secretDependencies.jobs && secretDependencies.jobs.length > 0 && 
+              getOptimalComponent(
+                secretDependencies.jobs,
+                "Jobs",
+                "jobs",
+                { defaultExpanded: false }
+              )
+            }
+            
+            {secretDependencies.cronjobs && secretDependencies.cronjobs.length > 0 && 
+              getOptimalComponent(
+                secretDependencies.cronjobs,
+                "CronJobs",
+                "cronjobs",
+                { defaultExpanded: false }
+              )
+            }
+          </div>
         </CardContent>
       </Card>
     </div>

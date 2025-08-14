@@ -10,7 +10,7 @@ import { updateConfigMapDependencies } from "@/data/Configurations/ConfigMaps/Co
 import { useEventSource } from "@/components/app/Common/Hooks/EventSource";
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { CONFIG_MAPS_ENDPOINT } from "@/constants";
+import { CONFIGMAP_ENDPOINT_SINGULAR } from "@/constants";
 import type { ConfigMapDependencies, DependencyResource } from "@/data/Configurations/ConfigMaps/ConfigMapDependenciesSlice";
 
 const ConfigMapDependenciesContainer = memo(function () {
@@ -36,7 +36,7 @@ const ConfigMapDependenciesContainer = memo(function () {
 
   useEventSource({
     url: getEventStreamUrl(
-      CONFIG_MAPS_ENDPOINT,
+      CONFIGMAP_ENDPOINT_SINGULAR,
       createEventStreamQueryObject(
         config,
         cluster,
@@ -59,31 +59,40 @@ const ConfigMapDependenciesContainer = memo(function () {
 
     return (
       <Card className="shadow-none rounded-lg mt-4">
-        <CardHeader className="p-4">
+        <CardHeader className="p-3">
           <CardTitle className="text-sm font-medium flex items-center justify-between">
             {title}
-            <Badge variant="secondary" className="text-xs">
+            <Badge variant="secondary" className="text-xs px-2 py-0.5">
               {resources.length}
             </Badge>
           </CardTitle>
         </CardHeader>
-        <CardContent className="px-4">
-          <div className="space-y-2">
+        <CardContent className="px-3 pb-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
             {resources.map((resource, index) => (
-              <div key={index} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors">
-                <div className="flex flex-col">
-                  <span className="font-medium text-sm">{resource.name}</span>
-                  <span className="text-xs text-muted-foreground">
-                    Namespace: {resource.namespace}
+              <div 
+                key={index} 
+                className="group relative flex items-center justify-between p-2 border rounded-md hover:bg-muted/50 hover:border-border transition-all duration-200 cursor-pointer min-h-[60px]"
+                onClick={() => navigateToResource(resourceType, resource.name, resource.namespace)}
+              >
+                <div className="flex flex-col min-w-0 flex-1 pr-2">
+                  <span className="font-medium text-xs truncate" title={resource.name}>
+                    {resource.name}
+                  </span>
+                  <span className="text-xs text-muted-foreground truncate" title={`Namespace: ${resource.namespace}`}>
+                    {resource.namespace}
                   </span>
                 </div>
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => navigateToResource(resourceType, resource.name, resource.namespace)}
-                  className="h-8 w-8 p-0"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigateToResource(resourceType, resource.name, resource.namespace);
+                  }}
+                  className="h-6 w-6 p-0 opacity-60 group-hover:opacity-100 transition-opacity flex-shrink-0"
                 >
-                  <ExternalLinkIcon className="h-4 w-4" />
+                  <ExternalLinkIcon className="h-3 w-3" />
                 </Button>
               </div>
             ))}
@@ -137,7 +146,7 @@ const ConfigMapDependenciesContainer = memo(function () {
           <CardTitle className="text-sm font-medium">Dependencies</CardTitle>
         </CardHeader>
         <CardContent className="px-4">
-          <div className="text-sm text-muted-foreground mb-4">
+          <div className="text-sm text-muted-foreground mb-3">
             Workloads that use this configmap:
           </div>
           {renderResourceList("Pods", configMapDependencies.pods, "pods")}
