@@ -1,4 +1,6 @@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { deleteResources, resetDeleteResource } from "@/data/Misc/DeleteResourceSlice";
 import { kwDetails, kwList, appRoute } from "@/routes";
@@ -50,6 +52,7 @@ const TableDelete = ({ selectedRows, toggleAllRowsSelected, postDeleteCallback }
 
   const [canDelete, setCanDelete] = useState<boolean>(true);
   const [checkingPermission, setCheckingPermission] = useState<boolean>(false);
+  const [forceDelete, setForceDelete] = useState<boolean>(false);
 
   useEffect(() => {
     if (message?.failures?.length === 0 && !error) {
@@ -163,6 +166,10 @@ const TableDelete = ({ selectedRows, toggleAllRowsSelected, postDeleteCallback }
       data = [{ name: (paramList as any)?.resourcename, namespace: (paramList as any)?.namespace }];
     }
     const queryParamsObj: Record<string, string> = { config, cluster };
+    // Only for pods, allow force delete with grace period 0
+    if (resourcekind === 'pods' && forceDelete) {
+      queryParamsObj['force'] = 'true';
+    }
     if (resourcekind === 'customresources') {
       queryParamsObj['group'] = group;
       queryParamsObj['kind'] = kind;
@@ -234,6 +241,15 @@ const TableDelete = ({ selectedRows, toggleAllRowsSelected, postDeleteCallback }
             Are you sure you want to delete {selectedRows.length > 1 ? `${selectedRows.length} resources` : '1 resource'} ?
           </DialogDescription>
         </DialogHeader>
+
+        {resourcekind === 'pods' && (
+          <div className="mt-2 flex items-center space-x-2">
+            <Checkbox id="force-delete" checked={forceDelete} onCheckedChange={(v) => setForceDelete(Boolean(v))} />
+            <Label htmlFor="force-delete" className="text-sm">
+              Force delete (set grace period to 0s)
+            </Label>
+          </div>
+        )}
 
         <DialogFooter className="sm:justify-center">
           <Button

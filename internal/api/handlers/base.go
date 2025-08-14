@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -248,6 +249,22 @@ func (h *ResourcesHandler) DeleteResources(c *gin.Context) {
 		return
 	}
 
+	// Determine delete options (support force delete for pods and optional gracePeriodSeconds)
+	var deleteOptions metav1.DeleteOptions
+	{
+		forceParam := c.DefaultQuery("force", "false")
+		gracePeriodParam := c.Query("gracePeriodSeconds")
+
+		if resourceKind == "pods" && (strings.EqualFold(forceParam, "true") || forceParam == "1") {
+			gp := int64(0)
+			deleteOptions.GracePeriodSeconds = &gp
+		} else if gracePeriodParam != "" {
+			if gp, err := strconv.ParseInt(gracePeriodParam, 10, 64); err == nil {
+				deleteOptions.GracePeriodSeconds = &gp
+			}
+		}
+	}
+
 	// Process deletions and collect failures
 	resp := DeleteResourcesResponse{Failures: []struct {
 		Name      string `json:"name"`
@@ -262,10 +279,10 @@ func (h *ResourcesHandler) DeleteResources(c *gin.Context) {
 				// If namespaced resource but namespace not provided, record failure
 				delErr = fmt.Errorf("namespace is required for namespaced resource %s", resourceKind)
 			} else {
-				delErr = dynamicClient.Resource(gvr).Namespace(item.Namespace).Delete(c.Request.Context(), item.Name, metav1.DeleteOptions{})
+				delErr = dynamicClient.Resource(gvr).Namespace(item.Namespace).Delete(c.Request.Context(), item.Name, deleteOptions)
 			}
 		} else {
-			delErr = dynamicClient.Resource(gvr).Delete(c.Request.Context(), item.Name, metav1.DeleteOptions{})
+			delErr = dynamicClient.Resource(gvr).Delete(c.Request.Context(), item.Name, deleteOptions)
 		}
 
 		if delErr != nil {
