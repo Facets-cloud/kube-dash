@@ -10,6 +10,7 @@ import { KwDetails } from '@/components/app/Common/Details';
 import { KwList } from '@/components/app/Common/List';
 import { CloudShellDetailsContainer } from '@/components/app/MiscDetailsContainer/CloudShellDetailsContainer';
 import { HelmChartsOverview } from '@/components/app/HelmCharts/HelmChartsOverview';
+import { Settings } from '@/components/app/Settings';
 
 
 
@@ -85,6 +86,15 @@ const helmChartsRoute = createRoute({
   })
 });
 
+const settingsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/settings',
+  component: Settings,
+  validateSearch: (search: Record<string, unknown>) => ({
+    cluster: String(search.cluster) || '',
+  })
+});
+
 
 
 const kubeConfigurationRoute = createRoute({
@@ -100,7 +110,8 @@ const routeTree = rootRoute.addChildren([
     kwList,
     kwDetails,
     cloudShellRoute,
-    helmChartsRoute
+    helmChartsRoute,
+    settingsRoute
   ])
 ]);
 
@@ -125,5 +136,6 @@ export {
   kwDetails,
   cloudShellRoute,
   helmChartsRoute,
-  appRoute
+  appRoute,
+  settingsRoute
 };

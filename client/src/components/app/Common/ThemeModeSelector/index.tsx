@@ -9,9 +9,12 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 
 import { Button } from "@/components/ui/button";
 import { useTheme } from "../../ThemeProvider";
+import { Link, useRouterState } from "@tanstack/react-router";
 
 export function ThemeModeSelector() {
   const { setTheme } = useTheme();
+  const router = useRouterState();
+  const configName = router.location.pathname.split('/')[1] || 'config';
 
   return (
     <DropdownMenu>
@@ -40,6 +43,11 @@ export function ThemeModeSelector() {
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => setTheme("system")}>
           System
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link to={`/${configName}/settings`} className="cursor-pointer">
+            Theme settings
+          </Link>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

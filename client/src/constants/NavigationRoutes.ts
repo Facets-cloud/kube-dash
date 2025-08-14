@@ -148,6 +148,12 @@ const NAVIGATION_ROUTE: NavigationRoutes = {
       name: 'Cloud Shell',
       route: 'cloudshell'
     }
+  ],
+  'Preferences': [
+    {
+      name: 'Settings',
+      route: 'settings'
+    }
   ]
 };
 

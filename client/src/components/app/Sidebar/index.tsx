@@ -106,6 +106,8 @@ const Sidebar = memo(function ({ className }: SidebarProps) {
       navigate({ to: `/${configName}/cloudshell?cluster=${encodeURIComponent(clusterName)}` });
     } else if (routeValue === 'helmcharts') {
       navigate({ to: `/${configName}/helmcharts?cluster=${encodeURIComponent(clusterName)}` });
+    } else if (routeValue === 'settings') {
+      navigate({ to: `/${configName}/settings?cluster=${encodeURIComponent(clusterName)}` });
     } else {
       navigate({ to: `/${configName}/list?cluster=${encodeURIComponent(clusterName)}&resourcekind=${routeValue}` });
     }
@@ -151,6 +153,8 @@ const Sidebar = memo(function ({ className }: SidebarProps) {
         return <img src={helmLogo} alt="Helm" width={16} height={16} />;
       case 'tools':
         return <Terminal width={16} />;
+      case 'preferences':
+        return <SlidersHorizontalIcon width={16} />;
       default:
         return <LayersIcon width={16} />;
     }

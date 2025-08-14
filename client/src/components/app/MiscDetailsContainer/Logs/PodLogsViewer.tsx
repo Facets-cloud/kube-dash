@@ -91,10 +91,6 @@ const LogLine: React.FC<{
         log.searchMatch && 'bg-yellow-50 dark:bg-yellow-900/20'
       )}
     >
-      {/* Line number */}
-      <span className="text-muted-foreground text-xs w-12 flex-shrink-0 text-right pt-0.5">
-        {log.lineNumber}
-      </span>
       
       {/* Timestamp */}
       {showTimestamps && (

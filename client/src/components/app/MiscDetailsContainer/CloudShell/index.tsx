@@ -340,7 +340,7 @@ export function CloudShell({ configName, clusterName, namespace = "default" }: C
             Cloud Shell
           </CardTitle>
           <CardDescription>
-            Interactive terminal with kubectl and helm access for cluster: {clusterName}
+            Interactive terminal with kubectl and helm access for cluster
           </CardDescription>
         </CardHeader>
         <CardContent>

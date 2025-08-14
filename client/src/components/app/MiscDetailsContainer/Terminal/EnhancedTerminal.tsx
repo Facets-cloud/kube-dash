@@ -74,7 +74,7 @@ const EnhancedTerminal = ({
   const darkTheme = {
     background: '#0d1117',        // GitHub dark background
     foreground: '#e6edf3',        // GitHub dark foreground
-    cursor: '#7c3aed',            // Purple cursor
+    cursor: '#645DF6',            // Facets primary
     cursorAccent: '#0d1117',      // Dark cursor accent
     selectionBackground: '#264f78', // VS Code selection blue
     black: '#484f58',
@@ -98,7 +98,7 @@ const EnhancedTerminal = ({
   const lightTheme = {
     background: '#ffffff',        // Pure white background
     foreground: '#1f2328',        // GitHub light foreground
-    cursor: '#7c3aed',            // Purple cursor
+    cursor: '#645DF6',            // Facets primary
     cursorAccent: '#ffffff',      // White cursor accent
     selectionBackground: '#0969da', // GitHub blue selection
     black: '#1f2328',
