@@ -135,7 +135,7 @@ export function KubeWall() {
               <GitHubLogoIcon className="w-6 h-6 cursor-pointer" onClick={() => window.open('https://github.com/Facets-cloud/kube-dash')} />
             </div>
           </div>
-          <div className="flex-1 flex overflow-hidden">
+          <div className="flex-1 flex overflow-y-auto">
             <Outlet />
           </div>
         </div>

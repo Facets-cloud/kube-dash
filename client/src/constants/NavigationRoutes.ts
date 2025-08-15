@@ -3,6 +3,10 @@ import { NavigationRoutes } from "@/types";
 const NAVIGATION_ROUTE: NavigationRoutes = {
   'Cluster': [
     {
+      name: 'Overview',
+      route: 'overview'
+    },
+    {
       name: 'Nodes',
       route: 'nodes'
     },

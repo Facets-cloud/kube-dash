@@ -108,6 +108,8 @@ const Sidebar = memo(function ({ className }: SidebarProps) {
       navigate({ to: `/${configName}/helmcharts?cluster=${encodeURIComponent(clusterName)}` });
     } else if (routeValue === 'settings') {
       navigate({ to: `/${configName}/settings?cluster=${encodeURIComponent(clusterName)}` });
+    } else if (routeValue === 'overview') {
+      navigate({ to: `/${configName}/overview?cluster=${encodeURIComponent(clusterName)}` });
     } else {
       navigate({ to: `/${configName}/list?cluster=${encodeURIComponent(clusterName)}&resourcekind=${routeValue}` });
     }
@@ -161,6 +163,11 @@ const Sidebar = memo(function ({ className }: SidebarProps) {
   };
 
   const getActiveNav = (route: string, check = false) => {
+    // For overview route, check if current pathname contains '/overview'
+    if (route === 'overview') {
+      return router.location.pathname.includes('/overview');
+    }
+    // For other routes, check resourcekind parameter
     return route === (!check ? queryParams.get('kind') : queryParams.get('resourcekind'));
   };
 

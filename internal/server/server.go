@@ -14,6 +14,7 @@ import (
 	"github.com/Facets-cloud/kube-dash/internal/api/handlers/configurations"
 	custom_resources "github.com/Facets-cloud/kube-dash/internal/api/handlers/custom-resources"
 	"github.com/Facets-cloud/kube-dash/internal/api/handlers/helm"
+	metrics_handlers "github.com/Facets-cloud/kube-dash/internal/api/handlers/metrics"
 	"github.com/Facets-cloud/kube-dash/internal/api/handlers/networking"
 	"github.com/Facets-cloud/kube-dash/internal/api/handlers/portforward"
 	storage_handlers "github.com/Facets-cloud/kube-dash/internal/api/handlers/storage"
@@ -82,6 +83,9 @@ type Server struct {
 	servicesHandler  *networking.ServicesHandler
 	ingressesHandler *networking.IngressesHandler
 	endpointsHandler *networking.EndpointsHandler
+
+	// Metrics handlers
+	prometheusHandler *metrics_handlers.PrometheusHandler
 
 	// Storage handlers
 	persistentVolumesHandler      *storage_handlers.PersistentVolumesHandler
@@ -162,6 +166,9 @@ func New(cfg *config.Config) *Server {
 	ingressesHandler := networking.NewIngressesHandler(store, clientFactory, log)
 	endpointsHandler := networking.NewEndpointsHandler(store, clientFactory, log)
 
+	// Metrics handlers
+	prometheusHandler := metrics_handlers.NewPrometheusHandler(store, clientFactory, log)
+
 	// Create storage handlers
 	persistentVolumesHandler := storage_handlers.NewPersistentVolumesHandler(store, clientFactory, log)
 	persistentVolumeClaimsHandler := storage_handlers.NewPersistentVolumeClaimsHandler(store, clientFactory, log)
@@ -234,6 +241,9 @@ func New(cfg *config.Config) *Server {
 		ingressesHandler: ingressesHandler,
 		endpointsHandler: endpointsHandler,
 
+		// Metrics handlers
+		prometheusHandler: prometheusHandler,
+
 		// Storage handlers
 		persistentVolumesHandler:      persistentVolumesHandler,
 		persistentVolumeClaimsHandler: persistentVolumeClaimsHandler,
@@ -292,6 +302,11 @@ func (s *Server) setupRoutes() {
 	// API routes
 	api := s.router.Group("/api/v1")
 	{
+		// Metrics (Prometheus) endpoints
+		api.GET("/metrics/prometheus/availability", s.prometheusHandler.GetAvailability)
+		api.GET("/metrics/pods/:namespace/:name/prometheus", s.prometheusHandler.GetPodMetricsSSE)
+		api.GET("/metrics/nodes/:name/prometheus", s.prometheusHandler.GetNodeMetricsSSE)
+		api.GET("/metrics/overview/prometheus", s.prometheusHandler.GetClusterOverviewSSE)
 		// API info
 		api.GET("/", s.apiInfo)
 

@@ -1,7 +1,7 @@
 import { CLUSTER_ROLES_ENDPOINT, CLUSTER_ROLE_BINDINGS_ENDPOINT, CONFIG_MAPS_ENDPOINT, CRON_JOBS_ENDPOINT, CUSTOM_RESOURCES_ENDPOINT, CUSTOM_RESOURCES_LIST_ENDPOINT, DAEMON_SETS_ENDPOINT, DEPLOYMENT_ENDPOINT, ENDPOINTS_ENDPOINT, HELM_RELEASES_ENDPOINT, HPA_ENDPOINT, INGRESSES_ENDPOINT, JOBS_ENDPOINT, LEASES_ENDPOINT, LIMIT_RANGE_ENDPOINT, NAMESPACES_ENDPOINT, NODES_ENDPOINT, PERSISTENT_VOLUMES_ENDPOINT, PERSISTENT_VOLUME_CLAIMS_ENDPOINT, PODS_ENDPOINT, POD_DISRUPTION_BUDGETS_ENDPOINT, PRIORITY_CLASSES_ENDPOINT, REPLICA_SETS_ENDPOINT, RESOURCE_QUOTAS_ENDPOINT, ROLES_ENDPOINT, ROLE_BINDINGS_ENDPOINT, RUNTIME_CLASSES_ENDPOINT, SECRETS_ENDPOINT, SERVICES_ENDPOINT, SERVICE_ACCOUNTS_ENDPOINT, STATEFUL_SETS_ENDPOINT, STORAGE_CLASSES_ENDPOINT } from "@/constants";
 import { ClusterRoleBindingDetailsContainer, ClusterRoleDetailsContainer, ConfigMapDetailsContainer, CustomResourceDetailsContainer, DaemonSetDetailsContainer, DeploymentDetailsContainer, EndpointDetailsContainer, LimitRangeDetailsContainer, NamespaceDetailsContainer, NodeDetailsContainer, PodDetailsContainer, PodDisruptionBudgetDetailsContainer, ResourceQuotaDetailsContainer, RoleBindingDetailsContainer, RoleDetailsContainer, RuntimeClassDetailsContainer, SecretDetailsContainer, ServiceAccountDetailsContainer, ServiceDetailsContainer, StatefulSetDetailsContainer } from "@/components/app/MiscDetailsContainer";
 import { CustomResourceDefinitionsContainer } from "@/components/app/MiscDetailsContainer/CustomResourceDefinitionsContainer";
-import PodMetricsChart from "@/components/app/MiscDetailsContainer/PodMetricsChart";
+import PodMetricsSwitch from "@/components/app/MiscDetailsContainer/PodMetricsSwitch";
 import { getClusterRoleBindingDetailsConfig, getClusterRoleDetailsConfig, getConfigMapDetailsConfig, getCronJobsDetailsConfig, getCustomResourceDefinitionsDetailsConfig, getCustomResourceDetailsConfig, getDaemonSetDetailsConfig, getDeploymentDetailsConfig, getEndpointDetailsConfig, getHelmReleaseDetailsConfig, getHPADetailsConfig, getIngressDetailsConfig, getJobsDetailsConfig, getLeaseDetailsConfig, getLimitRangeDetailsConfig, getNamespaceDetailsConfig, getNodeDetailsConfig, getPersistentVolumeClaimDetailsConfig, getPersistentVolumeDetailsConfig, getPodDetailsConfig, getPodDisruptionBudgetDetailsConfig, getPriorityClassDetailsConfig, getReplicaSetDetailsConfig, getResourceQuotaDetailsConfig, getRoleBindingDetailsConfig, getRoleDetailsConfig, getRuntimeClassDetailsConfig, getSecretDetailsConfig, getServiceAccountDetailsConfig, getServiceDetailsConfig, getStatefulSetDetailsConfig, getStorageClassDetailsConfig } from "@/utils/DetailType/DetailDefinations";
 
 import { ReplicaSetDetailsContainer } from "@/components/app/MiscDetailsContainer/ReplicaSetDetailsContainer";
@@ -93,7 +93,7 @@ const useDetailsWrapper = ({ loading, resourcekind }: DetailsWapperProps) => {
     (window as any).__kwPodCpuLimit = cpuLim || undefined;
     (window as any).__kwPodMemRequest = memReq || undefined;
     (window as any).__kwPodMemLimit = memLim || undefined;
-    return { ...getPodDetailsConfig(podDetails, loading), miscComponent: <PodDetailsContainer/>, topComponent: <PodMetricsChart/> } as any;
+    return { ...getPodDetailsConfig(podDetails, loading), miscComponent: <PodDetailsContainer/>, topComponent: <PodMetricsSwitch/> } as any;
   }
   if (resourcekind === DEPLOYMENT_ENDPOINT) {
     return { ...getDeploymentDetailsConfig(deploymentDetails, loading), miscComponent: <DeploymentDetailsContainer/> };

@@ -201,7 +201,7 @@ export function KubeConfiguration() {
       toast.error("Cannot navigate to unreachable cluster");
       return;
     }
-    navigate({ to: `/${config}/list?cluster=${encodeURIComponent(name)}&resourcekind=pods` });
+    navigate({ to: `/${config}/overview?cluster=${encodeURIComponent(name)}` });
   };
 
   return (

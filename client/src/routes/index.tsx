@@ -11,6 +11,7 @@ import { KwList } from '@/components/app/Common/List';
 import { CloudShellDetailsContainer } from '@/components/app/MiscDetailsContainer/CloudShellDetailsContainer';
 import { HelmChartsOverview } from '@/components/app/HelmCharts/HelmChartsOverview';
 import { Settings } from '@/components/app/Settings';
+import { ClusterOverview } from '@/components/app/Overview/ClusterOverview';
 
 
 
@@ -95,6 +96,15 @@ const settingsRoute = createRoute({
   })
 });
 
+const overviewRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/overview',
+  component: ClusterOverview,
+  validateSearch: (search: Record<string, unknown>) => ({
+    cluster: String(search.cluster) || '',
+  })
+});
+
 
 
 const kubeConfigurationRoute = createRoute({
@@ -111,7 +121,8 @@ const routeTree = rootRoute.addChildren([
     kwDetails,
     cloudShellRoute,
     helmChartsRoute,
-    settingsRoute
+    settingsRoute,
+    overviewRoute
   ])
 ]);
 
@@ -130,12 +141,13 @@ declare module '@tanstack/react-router' {
   }
 }
 
-export {
+export { 
   router,
   kwList,
   kwDetails,
   cloudShellRoute,
   helmChartsRoute,
   appRoute,
-  settingsRoute
+  settingsRoute,
+  overviewRoute
 };
