@@ -4,13 +4,16 @@ import { Button } from "@/components/ui/button";
 import { appRoute, overviewRoute } from "@/routes";
 import { API_VERSION } from "@/constants";
 import { useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { ResponsiveContainer, AreaChart, Area, YAxis, XAxis, Tooltip, CartesianGrid } from 'recharts';
 import kwFetch from "@/data/kwFetch";
 import { Loader } from "@/components/app/Loader";
 import { Tooltip as UITooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { useAppSelector, useAppDispatch } from '@/redux/hooks';
+import { updateClusterOverview, setClusterOverviewLoading, setPrometheusAvailability, setClusterOverviewError, setClusterOverviewRange } from '@/data/Overview/ClusterOverviewSlice';
+import { useEventSource } from '../Common/Hooks/EventSource';
 
-type Series = { metric: string; points: { t: number; v: number }[] };
+
 
 // Helper function to get packing color and tooltip based on percentage
 const getPackingInfo = (percentage: number) => {
@@ -98,12 +101,8 @@ export function ClusterOverview() {
   const { config } = appRoute.useParams();
   const { cluster } = overviewRoute.useSearch();
   const navigate = useNavigate();
-  const [series, setSeries] = useState<Series[]>([]);
-  const [instant, setInstant] = useState<any>(null);
-  const esRef = useRef<EventSource | null>(null);
-  const [hasProm, setHasProm] = useState(false);
-  const [range, setRange] = useState<string>('24h');
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const dispatch = useAppDispatch();
+  const { series, instant, loading: isLoading, hasProm, range } = useAppSelector((state) => state.clusterOverview);
 
   const getStepForRange = (r: string): string => {
     switch (r) {
@@ -129,32 +128,46 @@ export function ClusterOverview() {
   };
   const step = useMemo(() => getStepForRange(range), [range]);
 
+  // Check Prometheus availability
   useEffect(() => {
     let active = true;
     kwFetch(`${API_VERSION}/metrics/prometheus/availability?config=${encodeURIComponent(config)}&cluster=${encodeURIComponent(cluster)}`)
-      .then(res => { if (active) setHasProm(Boolean(res?.installed && res?.reachable)); })
-      .catch(() => { if (active) setHasProm(false); });
+      .then(res => { 
+        if (active) {
+          dispatch(setPrometheusAvailability(Boolean(res?.installed && res?.reachable)));
+        }
+      })
+      .catch(() => { 
+        if (active) {
+          dispatch(setPrometheusAvailability(false));
+        }
+      });
     return () => { active = false; };
-  }, [config, cluster]);
+  }, [config, cluster, dispatch]);
 
-  useEffect(() => {
-    if (!hasProm) return;
-    const url = `${API_VERSION}/metrics/overview/prometheus?config=${encodeURIComponent(config)}&cluster=${encodeURIComponent(cluster)}&range=${encodeURIComponent(range)}&step=${encodeURIComponent(step)}`;
-    setIsLoading(true);
-    const es = new EventSource(url);
-    esRef.current = es;
-    es.onmessage = (evt) => {
-      try {
-        const data = JSON.parse(evt.data);
-        const s: Series[] = Array.isArray(data?.series) ? data.series : [];
-        setSeries(s);
-        setInstant(data?.instant || null);
-        setIsLoading(false);
-      } catch {}
-    };
-    es.onerror = () => { setIsLoading(false); };
-    return () => { es.close(); esRef.current = null; };
-  }, [config, cluster, hasProm, range, step]);
+  // EventSource URL for cluster overview metrics
+  const eventSourceUrl = hasProm ? 
+    `${API_VERSION}/metrics/overview/prometheus?config=${encodeURIComponent(config)}&cluster=${encodeURIComponent(cluster)}&range=${encodeURIComponent(range)}&step=${encodeURIComponent(step)}` : 
+    null;
+
+  // Use EventSource hook for real-time updates
+  useEventSource({
+    url: eventSourceUrl || '',
+    sendMessage: (data: any) => {
+      if (data && (data.series || data.instant)) {
+        dispatch(updateClusterOverview(data));
+      }
+    },
+    setLoading: (loading: boolean) => {
+      dispatch(setClusterOverviewLoading(loading));
+    },
+    onConfigError: () => {
+      dispatch(setClusterOverviewError('Configuration error'));
+    },
+    onPermissionError: (error: any) => {
+      dispatch(setClusterOverviewError(error?.message || 'Permission error'));
+    },
+  });
 
   // Extract cluster stats from the new API response
   const nodeCount = Math.round(Number(instant?.node_count || 0));
@@ -377,7 +390,7 @@ export function ClusterOverview() {
             <CardTitle className="text-base font-semibold">Node Count Trend</CardTitle>
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted-foreground">Range</span>
-              <Select value={range} onValueChange={setRange}>
+              <Select value={range} onValueChange={(value) => dispatch(setClusterOverviewRange(value))}>
                 <SelectTrigger className="w-28 h-8">
                   <SelectValue placeholder="Range" />
                 </SelectTrigger>

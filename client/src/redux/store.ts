@@ -105,6 +105,7 @@ import persistentVolumeClaimScaleSlice from '@/data/Storages/PersistentVolumeCla
 import listTableNodeArchitectureSlice from '@/data/Misc/ListTableNodeArchitectureSlice';
 import listTableNodeConditionSlice from '@/data/Misc/ListTableNodeConditionSlice';
 import listTableNodeOperatingSystemSlice from '@/data/Misc/ListTableNodeOperatingSystemSlice';
+import clusterOverviewSlice from '@/data/Overview/ClusterOverviewSlice';
 
 const store = configureStore({
   reducer: {
@@ -215,6 +216,7 @@ const store = configureStore({
     listTableNodeArchitecture: listTableNodeArchitectureSlice,
     listTableNodeCondition: listTableNodeConditionSlice,
     listTableNodeOperatingSystem: listTableNodeOperatingSystemSlice,
+    clusterOverview: clusterOverviewSlice,
   },
 });
 
