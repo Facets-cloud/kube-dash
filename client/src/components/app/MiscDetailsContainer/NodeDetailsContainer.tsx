@@ -1,5 +1,4 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import NodeMetricsSwitch from "./NodeMetricsSwitch";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/app/Table";
 import { HeaderList, Pods } from "@/types";
@@ -71,7 +70,6 @@ const NodeDetailsContainer = memo(function () {
 
   return (
     <div className="mt-2">
-      <NodeMetricsSwitch />
       {
         images && <Card className="shadow-none rounded-lg">
           <CardHeader className="p-4 ">

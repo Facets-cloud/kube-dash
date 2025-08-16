@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Facets-cloud/kube-dash/internal/api/utils"
@@ -21,12 +21,23 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
+// CacheEntry represents a cached item with expiration
+type CacheEntry struct {
+	Data      interface{}
+	ExpiresAt time.Time
+}
+
 // PrometheusHandler provides endpoints for Prometheus-backed metrics
 type PrometheusHandler struct {
 	store         *storage.KubeConfigStore
 	clientFactory *k8s.ClientFactory
 	logger        *logger.Logger
 	sseHandler    *utils.SSEHandler
+
+	// Cache for metrics operations
+	cache    map[string]CacheEntry
+	cacheMux sync.RWMutex
+	cacheTTL time.Duration
 }
 
 // NewPrometheusHandler creates a new Prometheus metrics handler
@@ -36,6 +47,48 @@ func NewPrometheusHandler(store *storage.KubeConfigStore, clientFactory *k8s.Cli
 		clientFactory: clientFactory,
 		logger:        log,
 		sseHandler:    utils.NewSSEHandler(log),
+		cache:         make(map[string]CacheEntry),
+		cacheTTL:      5 * time.Minute, // 5 minute cache TTL for metrics
+	}
+}
+
+// getCacheKey generates a cache key for the given parameters
+func (h *PrometheusHandler) getCacheKey(operation string, configID, cluster, nodeName, rng, step string) string {
+	return fmt.Sprintf("%s:%s:%s:%s:%s:%s", operation, configID, cluster, nodeName, rng, step)
+}
+
+// getFromCache retrieves data from cache if it exists and is not expired
+func (h *PrometheusHandler) getFromCache(key string) (interface{}, bool) {
+	h.cacheMux.RLock()
+	defer h.cacheMux.RUnlock()
+
+	if entry, exists := h.cache[key]; exists && time.Now().Before(entry.ExpiresAt) {
+		return entry.Data, true
+	}
+	return nil, false
+}
+
+// setCache stores data in cache with TTL
+func (h *PrometheusHandler) setCache(key string, data interface{}, ttl time.Duration) {
+	h.cacheMux.Lock()
+	defer h.cacheMux.Unlock()
+
+	h.cache[key] = CacheEntry{
+		Data:      data,
+		ExpiresAt: time.Now().Add(ttl),
+	}
+}
+
+// clearExpiredCache removes expired cache entries
+func (h *PrometheusHandler) clearExpiredCache() {
+	h.cacheMux.Lock()
+	defer h.cacheMux.Unlock()
+
+	now := time.Now()
+	for key, entry := range h.cache {
+		if now.After(entry.ExpiresAt) {
+			delete(h.cache, key)
+		}
 	}
 }
 
@@ -534,6 +587,14 @@ func (h *PrometheusHandler) GetNodeMetricsSSE(c *gin.Context) {
 	nodeName := c.Param("name")
 	rng := c.DefaultQuery("range", "15m")
 	step := c.DefaultQuery("step", "15s")
+	configID := c.Query("config")
+	cluster := c.Query("cluster")
+
+	// Clear expired cache entries periodically
+	h.clearExpiredCache()
+
+	// Generate cache key for this specific node metrics request
+	cacheKey := h.getCacheKey("node_metrics", configID, cluster, nodeName, rng, step)
 
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 4*time.Second)
 	defer cancel()
@@ -543,24 +604,48 @@ func (h *PrometheusHandler) GetNodeMetricsSSE(c *gin.Context) {
 		return
 	}
 
-	// Node selector via node_uname_info nodename filter
-	nodeSel := fmt.Sprintf("on(instance) group_left(nodename) node_uname_info{nodename=\"%s\"}", escapeLabelValue(nodeName))
+	// Enhanced PromQL queries for comprehensive node metrics
+	// Use simple node-based queries that match the working pods pattern
+	
+	// 1. Node Summary - CPU and Memory Utilization (requested ratios)
+	qCPUUtilization := fmt.Sprintf(`sum(kube_pod_container_resource_requests{resource="cpu", node="%s"}) / kube_node_status_allocatable{resource="cpu", node="%s"}`, escapeLabelValue(nodeName), escapeLabelValue(nodeName))
+	qMemoryUtilization := fmt.Sprintf(`sum(kube_pod_container_resource_requests{resource="memory", node="%s"}) / kube_node_status_allocatable{resource="memory", node="%s"}`, escapeLabelValue(nodeName), escapeLabelValue(nodeName))
 
-	// CPU utilization %
-	qCPU := fmt.Sprintf("100 * (sum by (instance) (rate(node_cpu_seconds_total{mode!=\"idle\",mode!=\"iowait\",mode!=\"steal\"}[5m])) / sum by (instance) (rate(node_cpu_seconds_total[5m]))) * %s", nodeSel)
-	// Memory utilization %
-	qMEM := fmt.Sprintf("100 * (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * %s", nodeSel)
-	// Filesystem usage % (root mount best-effort)
-	qFS := fmt.Sprintf("100 * (1 - (node_filesystem_avail_bytes{fstype!~\"tmpfs|overlay\",mountpoint=\"/\"} / node_filesystem_size_bytes{fstype!~\"tmpfs|overlay\",mountpoint=\"/\"})) * %s", nodeSel)
-	// Network RX/TX
-	qRX := fmt.Sprintf("sum by (instance) (rate(node_network_receive_bytes_total{name!~\"lo\"}[5m])) * %s", nodeSel)
-	qTX := fmt.Sprintf("sum by (instance) (rate(node_network_transmit_bytes_total{name!~\"lo\"}[5m])) * %s", nodeSel)
+	// 2. Node Disk Usage - try multiple approaches
+	// First try: simple aggregation without joins (may return data from all nodes)
+	qDiskUsed := `sum(node_filesystem_size_bytes{job="node-exporter"} - node_filesystem_avail_bytes{job="node-exporter"})`
+	qDiskAvailable := `sum(node_filesystem_avail_bytes{job="node-exporter"})`
+
+	// 3. Node Memory Usage Breakdown - simple queries without joins
+	qMemoryUsed := `sum(node_memory_MemTotal_bytes{job="node-exporter"} - node_memory_MemFree_bytes{job="node-exporter"} - node_memory_Buffers_bytes{job="node-exporter"} - node_memory_Cached_bytes{job="node-exporter"})`
+	qMemoryBuffered := `sum(node_memory_Buffers_bytes{job="node-exporter"})`
+	qMemoryCached := `sum(node_memory_Cached_bytes{job="node-exporter"})`
+	qMemoryFree := `sum(node_memory_MemFree_bytes{job="node-exporter"})`
+
+	// 4. Node CPU Usage (Aggregated) - simple query
+	qCPUAggregated := `100 * (1 - avg(rate(node_cpu_seconds_total{job="node-exporter", mode="idle"}[5m])))`
+
+	// Legacy queries for backward compatibility - use same nodeSel pattern
+	nodeSel := fmt.Sprintf(`on(instance) group_left(nodename) node_uname_info{nodename="%s"}`, escapeLabelValue(nodeName))
+
+	// Legacy queries for backward compatibility
+	qCPU := fmt.Sprintf(`100 * (sum by (instance) (rate(node_cpu_seconds_total{mode!="idle",mode!="iowait",mode!="steal"}[5m])) / sum by (instance) (rate(node_cpu_seconds_total[5m]))) * %s`, nodeSel)
+	qMEM := fmt.Sprintf(`100 * (1 - (node_memory_MemAvailable_bytes{job="node-exporter"} / node_memory_MemTotal_bytes{job="node-exporter"})) * %s`, nodeSel)
+	qFS := fmt.Sprintf(`100 * (1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay",mountpoint="/"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay",mountpoint="/"})) * %s`, nodeSel)
+	qRX := fmt.Sprintf(`sum by (instance) (rate(node_network_receive_bytes_total{name!~"lo"}[5m])) * %s`, nodeSel)
+	qTX := fmt.Sprintf(`sum by (instance) (rate(node_network_transmit_bytes_total{name!~"lo"}[5m])) * %s`, nodeSel)
 
 	// Instant: pods used/capacity
-	qPodsCap := fmt.Sprintf("max by (node) (kube_node_status_capacity{resource=\"pods\",node=\"%s\"})", escapeLabelValue(nodeName))
-	qPodsUsed := fmt.Sprintf("max by (node) (kubelet_running_pod_count{node=\"%s\"})", escapeLabelValue(nodeName))
+	qPodsCap := fmt.Sprintf(`max by (node) (kube_node_status_capacity{resource="pods",node="%s"})`, escapeLabelValue(nodeName))
+	qPodsUsed := fmt.Sprintf(`max by (node) (kubelet_running_pod_count{node="%s"})`, escapeLabelValue(nodeName))
 
 	fetch := func() (interface{}, error) {
+		// Check cache first
+		if cachedData, found := h.getFromCache(cacheKey); found {
+			h.logger.Debug("Returning cached node metrics", "node", nodeName, "range", rng)
+			return cachedData, nil
+		}
+
 		now := time.Now()
 		start := now.Add(-parsePromRange(rng))
 		params := map[string]string{
@@ -569,38 +654,227 @@ func (h *PrometheusHandler) GetNodeMetricsSSE(c *gin.Context) {
 			"step":  step,
 		}
 
-		// CPU
-		params["query"] = url.QueryEscape(qCPU)
+		// Enhanced metrics queries with error handling and fallbacks
+		// 1. Node Summary - CPU and Memory Utilization (time series)
+		var cpuUtilSeries, memUtilSeries []series
+		
+		// Debug: Log the actual queries being sent
+		h.logger.Info("Node metrics queries:", "cpu_util", qCPUUtilization, "mem_util", qMemoryUtilization)
+		
+		// Try CPU utilization query
+		params["query"] = qCPUUtilization
+		if cpuUtilRaw, err := h.proxyPrometheus(c.Request.Context(), client, target, "/api/v1/query_range", params); err == nil {
+			if series, err := parseMatrix(cpuUtilRaw); err == nil && len(series) > 0 {
+				for i := range series {
+					series[i].Metric = "cpu_utilization_ratio"
+				}
+				cpuUtilSeries = series
+			} else {
+				// Fallback: try simpler CPU query without node filtering
+				fallbackCPU := `sum(kube_pod_container_resource_requests{resource="cpu"}) / sum(kube_node_status_allocatable{resource="cpu"})`
+				h.logger.Info("Trying CPU fallback query:", "query", fallbackCPU)
+				params["query"] = fallbackCPU
+				if fallbackRaw, err := h.proxyPrometheus(c.Request.Context(), client, target, "/api/v1/query_range", params); err == nil {
+					if series, err := parseMatrix(fallbackRaw); err == nil {
+						for i := range series {
+							series[i].Metric = "cpu_utilization_ratio"
+						}
+						cpuUtilSeries = series
+					}
+				}
+			}
+		} else {
+			h.logger.Error("CPU utilization query failed", "error", err, "query", qCPUUtilization)
+		}
+
+		// Try Memory utilization query
+		params["query"] = qMemoryUtilization
+		if memUtilRaw, err := h.proxyPrometheus(c.Request.Context(), client, target, "/api/v1/query_range", params); err == nil {
+			if series, err := parseMatrix(memUtilRaw); err == nil && len(series) > 0 {
+				for i := range series {
+					series[i].Metric = "memory_utilization_ratio"
+				}
+				memUtilSeries = series
+			} else {
+				// Fallback: try simpler memory query without node filtering
+				fallbackMem := `sum(kube_pod_container_resource_requests{resource="memory"}) / sum(kube_node_status_allocatable{resource="memory"})`
+				h.logger.Info("Trying memory fallback query:", "query", fallbackMem)
+				params["query"] = fallbackMem
+				if fallbackRaw, err := h.proxyPrometheus(c.Request.Context(), client, target, "/api/v1/query_range", params); err == nil {
+					if series, err := parseMatrix(fallbackRaw); err == nil {
+						for i := range series {
+							series[i].Metric = "memory_utilization_ratio"
+						}
+						memUtilSeries = series
+					}
+				}
+			}
+		} else {
+			h.logger.Error("Memory utilization query failed", "error", err, "query", qMemoryUtilization)
+		}
+
+		// 2. Node Disk Usage (time series) with fallbacks
+		var diskUsedSeries, diskAvailSeries []series
+		
+		h.logger.Info("Disk usage queries:", "used", qDiskUsed, "available", qDiskAvailable)
+		
+		// Try disk used query
+		params["query"] = qDiskUsed
+		if diskUsedRaw, err := h.proxyPrometheus(c.Request.Context(), client, target, "/api/v1/query_range", params); err == nil {
+			if series, err := parseMatrix(diskUsedRaw); err == nil && len(series) > 0 {
+				for i := range series {
+					series[i].Metric = "disk_used_bytes"
+				}
+				diskUsedSeries = series
+			} else {
+				// Fallback: try alternative disk used query
+				fallbackDiskUsed := `sum(node_filesystem_size_bytes{job="node-exporter"}) - sum(node_filesystem_free_bytes{job="node-exporter"})`
+				h.logger.Info("Trying disk used fallback query:", "query", fallbackDiskUsed)
+				params["query"] = fallbackDiskUsed
+				if fallbackRaw, err := h.proxyPrometheus(c.Request.Context(), client, target, "/api/v1/query_range", params); err == nil {
+					if series, err := parseMatrix(fallbackRaw); err == nil {
+						for i := range series {
+							series[i].Metric = "disk_used_bytes"
+						}
+						diskUsedSeries = series
+					}
+				}
+			}
+		} else {
+			h.logger.Error("Disk used query failed", "error", err, "query", qDiskUsed)
+		}
+
+		// Try disk available query
+		params["query"] = qDiskAvailable
+		if diskAvailRaw, err := h.proxyPrometheus(c.Request.Context(), client, target, "/api/v1/query_range", params); err == nil {
+			if series, err := parseMatrix(diskAvailRaw); err == nil && len(series) > 0 {
+				for i := range series {
+					series[i].Metric = "disk_available_bytes"
+				}
+				diskAvailSeries = series
+			} else {
+				// Fallback: try alternative disk available query
+				fallbackDiskAvail := `sum(node_filesystem_free_bytes{job="node-exporter"})`
+				h.logger.Info("Trying disk available fallback query:", "query", fallbackDiskAvail)
+				params["query"] = fallbackDiskAvail
+				if fallbackRaw, err := h.proxyPrometheus(c.Request.Context(), client, target, "/api/v1/query_range", params); err == nil {
+					if series, err := parseMatrix(fallbackRaw); err == nil {
+						for i := range series {
+							series[i].Metric = "disk_available_bytes"
+						}
+						diskAvailSeries = series
+					}
+				}
+			}
+		} else {
+			h.logger.Error("Disk available query failed", "error", err, "query", qDiskAvailable)
+		}
+
+		// 3. Memory Usage Breakdown (time series)
+		var memUsedSeries, memBufferedSeries, memCachedSeries, memFreeSeries []series
+		
+		h.logger.Info("Memory breakdown queries:", "used", qMemoryUsed, "buffered", qMemoryBuffered)
+		
+		params["query"] = qMemoryUsed
+		if memUsedRaw, err := h.proxyPrometheus(c.Request.Context(), client, target, "/api/v1/query_range", params); err == nil {
+			if series, err := parseMatrix(memUsedRaw); err == nil {
+				for i := range series {
+					series[i].Metric = "memory_used_bytes"
+				}
+				memUsedSeries = series
+			}
+		} else {
+			h.logger.Error("Memory used query failed", "error", err, "query", qMemoryUsed)
+		}
+
+		params["query"] = qMemoryBuffered
+		if memBufferedRaw, err := h.proxyPrometheus(c.Request.Context(), client, target, "/api/v1/query_range", params); err == nil {
+			if series, err := parseMatrix(memBufferedRaw); err == nil {
+				for i := range series {
+					series[i].Metric = "memory_buffered_bytes"
+				}
+				memBufferedSeries = series
+			}
+		} else {
+			h.logger.Error("Memory buffered query failed", "error", err, "query", qMemoryBuffered)
+		}
+
+		params["query"] = qMemoryCached
+		if memCachedRaw, err := h.proxyPrometheus(c.Request.Context(), client, target, "/api/v1/query_range", params); err == nil {
+			if series, err := parseMatrix(memCachedRaw); err == nil {
+				for i := range series {
+					series[i].Metric = "memory_cached_bytes"
+				}
+				memCachedSeries = series
+			}
+		} else {
+			h.logger.Error("Memory cached query failed", "error", err, "query", qMemoryCached)
+		}
+
+		params["query"] = qMemoryFree
+		if memFreeRaw, err := h.proxyPrometheus(c.Request.Context(), client, target, "/api/v1/query_range", params); err == nil {
+			if series, err := parseMatrix(memFreeRaw); err == nil {
+				for i := range series {
+					series[i].Metric = "memory_free_bytes"
+				}
+				memFreeSeries = series
+			}
+		} else {
+			h.logger.Error("Memory free query failed", "error", err, "query", qMemoryFree)
+		}
+
+		// 4. CPU Usage Aggregated (time series)
+		var cpuAggSeries []series
+		
+		h.logger.Info("CPU aggregated query:", "query", qCPUAggregated)
+		
+		params["query"] = qCPUAggregated
+		if cpuAggRaw, err := h.proxyPrometheus(c.Request.Context(), client, target, "/api/v1/query_range", params); err == nil {
+			if series, err := parseMatrix(cpuAggRaw); err == nil {
+				for i := range series {
+					series[i].Metric = "cpu_usage_aggregated"
+				}
+				cpuAggSeries = series
+			}
+		} else {
+			h.logger.Error("CPU aggregated query failed", "error", err, "query", qCPUAggregated)
+		}
+
+		// Legacy metrics for backward compatibility
+		h.logger.Info("Legacy queries:", "cpu", qCPU, "mem", qMEM, "fs", qFS)
+		
+		params["query"] = qCPU
 		cpuRaw, err := h.proxyPrometheus(c.Request.Context(), client, target, "/api/v1/query_range", params)
 		if err != nil {
+			h.logger.Error("Legacy CPU query failed", "error", err, "query", qCPU)
 			return nil, err
 		}
 		cpuSeries, _ := parseMatrix(cpuRaw)
 
-		// MEM
-		params["query"] = url.QueryEscape(qMEM)
+		params["query"] = qMEM
 		memRaw, err := h.proxyPrometheus(c.Request.Context(), client, target, "/api/v1/query_range", params)
 		if err != nil {
+			h.logger.Error("Legacy Memory query failed", "error", err, "query", qMEM)
 			return nil, err
 		}
 		memSeries, _ := parseMatrix(memRaw)
 
-		// FS
-		params["query"] = url.QueryEscape(qFS)
+		params["query"] = qFS
 		fsRaw, _ := h.proxyPrometheus(c.Request.Context(), client, target, "/api/v1/query_range", params)
 		fsSeries, _ := parseMatrix(fsRaw)
 
-		// RX
-		params["query"] = url.QueryEscape(qRX)
+		params["query"] = qRX
 		rxRaw, _ := h.proxyPrometheus(c.Request.Context(), client, target, "/api/v1/query_range", params)
 		rxSeries, _ := parseMatrix(rxRaw)
 
-		// TX
-		params["query"] = url.QueryEscape(qTX)
+		params["query"] = qTX
 		txRaw, _ := h.proxyPrometheus(c.Request.Context(), client, target, "/api/v1/query_range", params)
 		txSeries, _ := parseMatrix(txRaw)
 
-		// Instant pods used/capacity
+		// Instant values for current metrics
+		instantMetrics := gin.H{}
+		
+		// Pods used/capacity
 		pods := gin.H{"used": nil, "capacity": nil}
 		capRaw, err := h.proxyPrometheus(c.Request.Context(), client, target, "/api/v1/query", map[string]string{"query": qPodsCap})
 		if err == nil {
@@ -610,11 +884,40 @@ func (h *PrometheusHandler) GetNodeMetricsSSE(c *gin.Context) {
 		if err == nil {
 			pods["used"] = usedRaw
 		}
+		instantMetrics["pods"] = pods
+
+		// Instant values for enhanced metrics with error handling
+		if cpuUtilInstant, err := h.proxyPrometheus(c.Request.Context(), client, target, "/api/v1/query", map[string]string{"query": qCPUUtilization}); err == nil {
+			instantMetrics["cpu_utilization"] = cpuUtilInstant
+		}
+
+		if memUtilInstant, err := h.proxyPrometheus(c.Request.Context(), client, target, "/api/v1/query", map[string]string{"query": qMemoryUtilization}); err == nil {
+			instantMetrics["memory_utilization"] = memUtilInstant
+		}
+
+		if diskUsedInstant, err := h.proxyPrometheus(c.Request.Context(), client, target, "/api/v1/query", map[string]string{"query": qDiskUsed}); err == nil {
+			instantMetrics["disk_used"] = diskUsedInstant
+		}
+
+		if diskAvailInstant, err := h.proxyPrometheus(c.Request.Context(), client, target, "/api/v1/query", map[string]string{"query": qDiskAvailable}); err == nil {
+			instantMetrics["disk_available"] = diskAvailInstant
+		}
+
+		// Combine all series
+		allSeries := append(append(append(cpuSeries, memSeries...), append(fsSeries, rxSeries...)...), txSeries...)
+		allSeries = append(allSeries, append(append(cpuUtilSeries, memUtilSeries...), append(diskUsedSeries, diskAvailSeries...)...)...)
+		allSeries = append(allSeries, append(append(memUsedSeries, memBufferedSeries...), append(memCachedSeries, memFreeSeries...)...)...)
+		allSeries = append(allSeries, cpuAggSeries...)
 
 		payload := gin.H{
-			"series":  append(append(append(cpuSeries, memSeries...), append(fsSeries, rxSeries...)...), txSeries...),
-			"instant": pods,
+			"series":  allSeries,
+			"instant": instantMetrics,
 		}
+
+		// Cache the result
+		h.setCache(cacheKey, payload, h.cacheTTL)
+		h.logger.Debug("Cached node metrics", "node", nodeName, "range", rng, "ttl", h.cacheTTL)
+
 		return payload, nil
 	}
 

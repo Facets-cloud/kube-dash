@@ -56,6 +56,7 @@ import namespacesSlice from '@/data/Clusters/Namespaces/NamespacesSlice';
 import nodeDetailsSlice from '@/data/Clusters/Nodes/NodeDetailsSlice';
 import nodeListSlice from '@/data/Clusters/Nodes/NodeListSlice';
 import nodePodsSlice from '@/data/Clusters/Nodes/NodePodsSlice';
+import nodeMetricsSlice from '@/data/Clusters/Nodes/NodeMetricsSlice';
 import persistentVolumeClaimsDetailsSlice from '@/data/Storages/PersistentVolumeClaims/PersistentVolumeClaimDetailsSlice';
 import persistentVolumeClaimsListSlice from '@/data/Storages/PersistentVolumeClaims/PersistentVolumeClaimsListSlice';
 import persistentVolumeDetailsSlice from '@/data/Storages/PersistentVolumes/PersistentVolumeDetailsSlice';
@@ -186,6 +187,7 @@ const store = configureStore({
     nodes: nodeListSlice,
     nodeDetails: nodeDetailsSlice,
     nodePods: nodePodsSlice,
+    nodeMetrics: nodeMetricsSlice,
     deleteResources: deleteResourcesSlice,
     listTableNamesapce: listTableNamesapceSlice,
     listTableNode: listTableNodeSlice,

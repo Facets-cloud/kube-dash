@@ -42,6 +42,7 @@ import { HelmReleaseResources } from "../../Details/HelmReleaseResources";
 import { RollbackHelmRelease } from "@/components/HelmReleases/RollbackHelmRelease";
 import { Button } from "@/components/ui/button";
 import { HelmChartUpgradeDialog } from "@/components/app/HelmCharts/HelmChartUpgradeDialog";
+import NodeMetricsSwitch from "@/components/app/MiscDetailsContainer/NodeMetricsSwitch";
 import { useState } from "react";
 
 const KwDetails = () => {
@@ -241,6 +242,7 @@ const KwDetails = () => {
                         <TabsTrigger value='events'>Events</TabsTrigger>
                       </>
                     )}
+                    {resourcekind === 'nodes' && <TabsTrigger value='metrics'>Metrics</TabsTrigger>}
                     {resourcekind === PODS_ENDPOINT && <TabsTrigger value='logs'>Logs</TabsTrigger>}
                     {resourcekind === PODS_ENDPOINT && <TabsTrigger value='exec'>Exec</TabsTrigger>}
                   </TabsList>
@@ -305,6 +307,12 @@ const KwDetails = () => {
                         />
                       </TabsContent>
                     </>
+                  )}
+                  
+                  {resourcekind === 'nodes' && (
+                    <TabsContent value='metrics'>
+                      <NodeMetricsSwitch />
+                    </TabsContent>
                   )}
                   
                   {
