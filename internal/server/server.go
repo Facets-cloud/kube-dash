@@ -304,7 +304,7 @@ func (s *Server) setupRoutes() {
 	{
 		// Metrics (Prometheus) endpoints
 		api.GET("/metrics/prometheus/availability", s.prometheusHandler.GetAvailability)
-		api.GET("/metrics/pods/:namespace/:name/prometheus", s.prometheusHandler.GetPodMetricsSSE)
+		api.GET("/metrics/pods/:namespace/:name/prometheus", s.prometheusHandler.GetPodEnhancedMetricsSSE)
 		api.GET("/metrics/nodes/:name/prometheus", s.prometheusHandler.GetNodeMetricsSSE)
 		api.GET("/metrics/overview/prometheus", s.prometheusHandler.GetClusterOverviewSSE)
 		// API info

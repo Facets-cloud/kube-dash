@@ -43,6 +43,8 @@ import { RollbackHelmRelease } from "@/components/HelmReleases/RollbackHelmRelea
 import { Button } from "@/components/ui/button";
 import { HelmChartUpgradeDialog } from "@/components/app/HelmCharts/HelmChartUpgradeDialog";
 import NodeMetricsSwitch from "@/components/app/MiscDetailsContainer/NodeMetricsSwitch";
+import PodPrometheusMetricsChart from "@/components/app/MiscDetailsContainer/PodPrometheusMetricsChart";
+import { usePrometheusAvailability } from "@/hooks/usePrometheusAvailability";
 import { useState } from "react";
 
 const KwDetails = () => {
@@ -58,6 +60,7 @@ const KwDetails = () => {
   const queryParamsObj: Record<string, string> = { config, cluster, namespace: namespace || '' };
   const hasShownConfigNotFoundToast = useRef(false);
   const [upgradeDialogOpen, setUpgradeDialogOpen] = useState(false);
+  const { isAvailable: isPrometheusAvailable } = usePrometheusAvailability();
   
   useEffect(() => {
     dispatch(resetYamlDetails());
@@ -244,6 +247,7 @@ const KwDetails = () => {
                     )}
                     {resourcekind === 'nodes' && <TabsTrigger value='metrics'>Metrics</TabsTrigger>}
                     {resourcekind === PODS_ENDPOINT && <TabsTrigger value='logs'>Logs</TabsTrigger>}
+                    {resourcekind === PODS_ENDPOINT && isPrometheusAvailable && <TabsTrigger value='metrics'>Metrics</TabsTrigger>}
                     {resourcekind === PODS_ENDPOINT && <TabsTrigger value='exec'>Exec</TabsTrigger>}
                   </TabsList>
 
@@ -326,6 +330,18 @@ const KwDetails = () => {
                       />
                     </TabsContent>
                   }
+                  
+                  {resourcekind === PODS_ENDPOINT && isPrometheusAvailable && (
+                    <TabsContent value='metrics'>
+                      <PodPrometheusMetricsChart
+                        podName={resourcename}
+                        namespace={namespace || ''}
+                        configName={config}
+                        clusterName={cluster}
+                      />
+                    </TabsContent>
+                  )}
+                  
                   {
                     resourcekind === PODS_ENDPOINT &&
                     <TabsContent value='exec'>

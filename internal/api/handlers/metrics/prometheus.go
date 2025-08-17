@@ -575,6 +575,307 @@ func (h *PrometheusHandler) GetPodMetricsSSE(c *gin.Context) {
 	h.sseHandler.SendSSEResponseWithUpdates(c, initial, fetch)
 }
 
+// GetPodEnhancedMetricsSSE streams enhanced Prometheus-based pod metrics with CPU average/maximum and memory usage
+func (h *PrometheusHandler) GetPodEnhancedMetricsSSE(c *gin.Context) {
+	client, err := h.getClient(c)
+	if err != nil {
+		h.sseHandler.SendSSEError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	namespace := c.Param("namespace")
+	name := c.Param("name")
+	rng := c.DefaultQuery("range", "15m")
+	step := c.DefaultQuery("step", "15s")
+
+	// Scale timeout based on range duration for longer queries
+	timeoutDuration := 4 * time.Second
+	rangeDuration := parsePromRange(rng)
+	if rangeDuration >= 7*24*time.Hour { // 7+ days
+		timeoutDuration = 15 * time.Second
+	} else if rangeDuration >= 24*time.Hour { // 1+ day
+		timeoutDuration = 10 * time.Second
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), timeoutDuration)
+	defer cancel()
+	target, err := h.discoverPrometheus(ctx, client)
+	if err != nil {
+		h.sseHandler.SendSSEError(c, http.StatusNotFound, "prometheus not available")
+		return
+	}
+
+	// Get pod resource limits and requests from Kubernetes API
+	pod, err := client.CoreV1().Pods(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		h.logger.Error("Failed to get pod details", "error", err, "namespace", namespace, "name", name)
+	}
+
+	// Extract resource limits and requests
+	var cpuLimit, cpuRequest, memoryLimit, memoryRequest float64
+	if pod != nil {
+		for _, container := range pod.Spec.Containers {
+			if container.Resources.Limits != nil {
+				if cpuLimitQuantity, ok := container.Resources.Limits["cpu"]; ok {
+					cpuLimit += float64(cpuLimitQuantity.MilliValue())
+				}
+				if memLimitQuantity, ok := container.Resources.Limits["memory"]; ok {
+					memoryLimit += float64(memLimitQuantity.Value())
+				}
+			}
+			if container.Resources.Requests != nil {
+				if cpuReqQuantity, ok := container.Resources.Requests["cpu"]; ok {
+					cpuRequest += float64(cpuReqQuantity.MilliValue())
+				}
+				if memReqQuantity, ok := container.Resources.Requests["memory"]; ok {
+					memoryRequest += float64(memReqQuantity.Value())
+				}
+			}
+		}
+	}
+
+	// Build enhanced queries as specified in requirements
+	// CPU Average Usage (millicores)
+	qCPUAvg := fmt.Sprintf(`avg(rate(container_cpu_usage_seconds_total{namespace=~"%s",endpoint="https-metrics",pod=~"%s",image!="", container!="POD"}[2m])* 1000)`, escapeLabelValue(namespace), escapeLabelValue(name))
+	// CPU Maximum Usage (millicores)
+	qCPUMax := fmt.Sprintf(`max(rate(container_cpu_usage_seconds_total{namespace=~"%s",endpoint="https-metrics",pod=~"%s",image!="", container!="POD"}[2m])* 1000)`, escapeLabelValue(namespace), escapeLabelValue(name))
+	// Memory Usage (bytes) - using usage_bytes to match Grafana queries and prevent false limit violations
+	qMemUsage := fmt.Sprintf(`sum(container_memory_usage_bytes{namespace=~"%s",endpoint="https-metrics",pod=~"%s",image!="",container!="POD"})`, escapeLabelValue(namespace), escapeLabelValue(name))
+
+	fetch := func() (interface{}, error) {
+		now := time.Now()
+		rangeDuration := parsePromRange(rng)
+		start := now.Add(-rangeDuration)
+		params := map[string]string{
+			"start": fmt.Sprintf("%d", start.Unix()),
+			"end":   fmt.Sprintf("%d", now.Unix()),
+			"step":  step,
+		}
+
+		// Debug logging for time range calculations
+		h.logger.Info("Pod metrics query debug",
+			"range", rng,
+			"rangeDuration", rangeDuration.String(),
+			"startTime", start.Format("2006-01-02 15:04:05"),
+			"endTime", now.Format("2006-01-02 15:04:05"),
+			"step", step,
+			"timeout", timeoutDuration.String())
+
+		// CPU Average
+		params["query"] = qCPUAvg
+		h.logger.Info("Executing CPU Average query", "query", qCPUAvg, "params", params)
+		cpuAvgRaw, err := h.proxyPrometheus(c.Request.Context(), client, target, "/api/v1/query_range", params)
+		if err != nil {
+			h.logger.Error("CPU Average query failed", "error", err, "query", qCPUAvg)
+			return nil, err
+		}
+		cpuAvgSeries, _ := parseMatrix(cpuAvgRaw)
+		for i := range cpuAvgSeries {
+			cpuAvgSeries[i].Metric = "cpu_average"
+		}
+		h.logger.Info("CPU Average query result", "seriesCount", len(cpuAvgSeries), "dataPoints", func() int {
+			if len(cpuAvgSeries) > 0 { return len(cpuAvgSeries[0].Points) }
+			return 0
+		}())
+		// Log actual data time range
+		if len(cpuAvgSeries) > 0 && len(cpuAvgSeries[0].Points) > 0 {
+			firstPoint := cpuAvgSeries[0].Points[0]
+			lastPoint := cpuAvgSeries[0].Points[len(cpuAvgSeries[0].Points)-1]
+			h.logger.Info("CPU data time range",
+				"firstDataPoint", time.Unix(int64(firstPoint.T), 0).Format("2006-01-02 15:04:05"),
+				"lastDataPoint", time.Unix(int64(lastPoint.T), 0).Format("2006-01-02 15:04:05"))
+		}
+
+		// CPU Maximum
+		params["query"] = qCPUMax
+		cpuMaxRaw, err := h.proxyPrometheus(c.Request.Context(), client, target, "/api/v1/query_range", params)
+		if err != nil {
+			h.logger.Error("CPU Maximum query failed", "error", err, "query", qCPUMax)
+			return nil, err
+		}
+		cpuMaxSeries, _ := parseMatrix(cpuMaxRaw)
+		for i := range cpuMaxSeries {
+			cpuMaxSeries[i].Metric = "cpu_maximum"
+		}
+
+		// Memory Usage
+		params["query"] = qMemUsage
+		h.logger.Info("Executing Memory Usage query", "query", qMemUsage, "params", params)
+		memUsageRaw, err := h.proxyPrometheus(c.Request.Context(), client, target, "/api/v1/query_range", params)
+		if err != nil {
+			h.logger.Error("Memory Usage query failed", "error", err, "query", qMemUsage)
+			return nil, err
+		}
+		memUsageSeries, _ := parseMatrix(memUsageRaw)
+		for i := range memUsageSeries {
+			memUsageSeries[i].Metric = "memory_usage"
+		}
+		h.logger.Info("Memory Usage query result", "seriesCount", len(memUsageSeries), "dataPoints", func() int {
+			if len(memUsageSeries) > 0 { return len(memUsageSeries[0].Points) }
+			return 0
+		}())
+		// Log actual data time range
+		if len(memUsageSeries) > 0 && len(memUsageSeries[0].Points) > 0 {
+			firstPoint := memUsageSeries[0].Points[0]
+			lastPoint := memUsageSeries[0].Points[len(memUsageSeries[0].Points)-1]
+			h.logger.Info("Memory data time range",
+				"firstDataPoint", time.Unix(int64(firstPoint.T), 0).Format("2006-01-02 15:04:05"),
+				"lastDataPoint", time.Unix(int64(lastPoint.T), 0).Format("2006-01-02 15:04:05"))
+		}
+
+		// VPA Recommendations (instant queries)
+		var vpaRecommendations gin.H
+		
+		// VPA CPU Target Recommendation - start with generic query
+		qVPACPUTarget := fmt.Sprintf(`max by (container) (kube_verticalpodautoscaler_status_recommendation_containerrecommendations_target{resource="cpu",unit="core",namespace="%s"})`, escapeLabelValue(namespace))
+		h.logger.Info("VPA CPU Target query:", "query", qVPACPUTarget)
+		if vpaCPUTargetRaw, err := h.proxyPrometheus(c.Request.Context(), client, target, "/api/v1/query", map[string]string{"query": qVPACPUTarget}); err == nil {
+			h.logger.Info("VPA CPU Target raw response:", "response", string(vpaCPUTargetRaw))
+			if cpuTarget, err := parseVectorSum(vpaCPUTargetRaw); err == nil && cpuTarget > 0 {
+				if vpaRecommendations == nil {
+					vpaRecommendations = gin.H{}
+				}
+				vpaRecommendations["cpu_target"] = cpuTarget * 1000 // Convert to millicores
+				h.logger.Info("VPA CPU Target found:", "value", cpuTarget*1000)
+			} else {
+				h.logger.Info("VPA CPU Target parse result:", "cpuTarget", cpuTarget, "parseError", err)
+			}
+		} else {
+			h.logger.Error("VPA CPU Target query failed:", "error", err)
+			// Try even more generic query without unit filter
+			qVPACPUTargetAlt := fmt.Sprintf(`max by (container) (kube_verticalpodautoscaler_status_recommendation_containerrecommendations_target{resource="cpu",namespace="%s"})`, escapeLabelValue(namespace))
+			h.logger.Info("VPA CPU Target alternative query:", "query", qVPACPUTargetAlt)
+			if vpaCPUTargetRaw, err := h.proxyPrometheus(c.Request.Context(), client, target, "/api/v1/query", map[string]string{"query": qVPACPUTargetAlt}); err == nil {
+				h.logger.Info("VPA CPU Target alt raw response:", "response", string(vpaCPUTargetRaw))
+				if cpuTarget, err := parseVectorSum(vpaCPUTargetRaw); err == nil && cpuTarget > 0 {
+					if vpaRecommendations == nil {
+						vpaRecommendations = gin.H{}
+					}
+					vpaRecommendations["cpu_target"] = cpuTarget * 1000
+					h.logger.Info("VPA CPU Target found (alt):", "value", cpuTarget*1000)
+				} else {
+					h.logger.Info("VPA CPU Target alt parse result:", "cpuTarget", cpuTarget, "parseError", err)
+				}
+			} else {
+				h.logger.Error("VPA CPU Target alternative query failed:", "error", err)
+			}
+		}
+		
+		// VPA CPU Upperbound Recommendation
+		qVPACPUUpperbound := fmt.Sprintf(`max(kube_verticalpodautoscaler_status_recommendation_containerrecommendations_upperbound{resource="cpu",namespace="%s"} * 1000)`, escapeLabelValue(namespace))
+		h.logger.Info("VPA CPU Upperbound query:", "query", qVPACPUUpperbound)
+		if vpaCPUUpperRaw, err := h.proxyPrometheus(c.Request.Context(), client, target, "/api/v1/query", map[string]string{"query": qVPACPUUpperbound}); err == nil {
+			h.logger.Info("VPA CPU Upperbound raw response:", "response", string(vpaCPUUpperRaw))
+			if cpuUpper, err := parseVectorSum(vpaCPUUpperRaw); err == nil && cpuUpper > 0 {
+				if vpaRecommendations == nil {
+					vpaRecommendations = gin.H{}
+				}
+				vpaRecommendations["cpu_upperbound"] = cpuUpper
+				h.logger.Info("VPA CPU Upperbound found:", "value", cpuUpper)
+			} else {
+				h.logger.Info("VPA CPU Upperbound parse result:", "cpuUpper", cpuUpper, "parseError", err)
+			}
+		} else {
+			h.logger.Error("VPA CPU Upperbound query failed:", "error", err)
+		}
+		
+		// VPA Memory Target Recommendation - start with generic query
+		qVPAMemTarget := fmt.Sprintf(`max by (container) (kube_verticalpodautoscaler_status_recommendation_containerrecommendations_target{resource="memory",unit="byte",namespace="%s"})`, escapeLabelValue(namespace))
+		h.logger.Info("VPA Memory Target query:", "query", qVPAMemTarget)
+		if vpaMemTargetRaw, err := h.proxyPrometheus(c.Request.Context(), client, target, "/api/v1/query", map[string]string{"query": qVPAMemTarget}); err == nil {
+			h.logger.Info("VPA Memory Target raw response:", "response", string(vpaMemTargetRaw))
+			if memTarget, err := parseVectorSum(vpaMemTargetRaw); err == nil && memTarget > 0 {
+				if vpaRecommendations == nil {
+					vpaRecommendations = gin.H{}
+				}
+				vpaRecommendations["memory_target"] = memTarget
+				h.logger.Info("VPA Memory Target found:", "value", memTarget)
+			} else {
+				h.logger.Info("VPA Memory Target parse result:", "memTarget", memTarget, "parseError", err)
+			}
+		} else {
+			h.logger.Error("VPA Memory Target query failed:", "error", err)
+			// Try even more generic query without unit filter
+			qVPAMemTargetAlt := fmt.Sprintf(`max by (container) (kube_verticalpodautoscaler_status_recommendation_containerrecommendations_target{resource="memory",namespace="%s"})`, escapeLabelValue(namespace))
+			h.logger.Info("VPA Memory Target alternative query:", "query", qVPAMemTargetAlt)
+			if vpaMemTargetRaw, err := h.proxyPrometheus(c.Request.Context(), client, target, "/api/v1/query", map[string]string{"query": qVPAMemTargetAlt}); err == nil {
+				h.logger.Info("VPA Memory Target alt raw response:", "response", string(vpaMemTargetRaw))
+				if memTarget, err := parseVectorSum(vpaMemTargetRaw); err == nil && memTarget > 0 {
+					if vpaRecommendations == nil {
+						vpaRecommendations = gin.H{}
+					}
+					vpaRecommendations["memory_target"] = memTarget
+					h.logger.Info("VPA Memory Target found (alt):", "value", memTarget)
+				} else {
+					h.logger.Info("VPA Memory Target alt parse result:", "memTarget", memTarget, "parseError", err)
+				}
+			} else {
+				h.logger.Error("VPA Memory Target alternative query failed:", "error", err)
+			}
+		}
+		
+		// VPA Memory Upperbound Recommendation
+		qVPAMemUpperbound := fmt.Sprintf(`max(kube_verticalpodautoscaler_status_recommendation_containerrecommendations_upperbound{resource="memory",namespace="%s"})`, escapeLabelValue(namespace))
+		h.logger.Info("VPA Memory Upperbound query:", "query", qVPAMemUpperbound)
+		if vpaMemUpperRaw, err := h.proxyPrometheus(c.Request.Context(), client, target, "/api/v1/query", map[string]string{"query": qVPAMemUpperbound}); err == nil {
+			h.logger.Info("VPA Memory Upperbound raw response:", "response", string(vpaMemUpperRaw))
+			if memUpper, err := parseVectorSum(vpaMemUpperRaw); err == nil && memUpper > 0 {
+				if vpaRecommendations == nil {
+					vpaRecommendations = gin.H{}
+				}
+				vpaRecommendations["memory_upperbound"] = memUpper
+				h.logger.Info("VPA Memory Upperbound found:", "value", memUpper)
+			} else {
+				h.logger.Info("VPA Memory Upperbound parse result:", "memUpper", memUpper, "parseError", err)
+			}
+		} else {
+			h.logger.Error("VPA Memory Upperbound query failed:", "error", err)
+		}
+
+		// Combine all series
+		allSeries := append(cpuAvgSeries, cpuMaxSeries...)
+		allSeries = append(allSeries, memUsageSeries...)
+
+		// Log final payload summary
+		totalDataPoints := 0
+		for _, series := range allSeries {
+			totalDataPoints += len(series.Points)
+		}
+		h.logger.Info("Final payload summary",
+			"totalSeries", len(allSeries),
+			"totalDataPoints", totalDataPoints,
+			"cpuSeriesCount", len(cpuAvgSeries)+len(cpuMaxSeries),
+			"memorySeriesCount", len(memUsageSeries))
+
+		payload := gin.H{
+			"series": allSeries,
+			"limits": gin.H{
+				"cpu":    cpuLimit,
+				"memory": memoryLimit,
+			},
+			"requests": gin.H{
+				"cpu":    cpuRequest,
+				"memory": memoryRequest,
+			},
+		}
+		
+		// Add VPA recommendations if available
+		if vpaRecommendations != nil {
+			payload["vpa_recommendations"] = vpaRecommendations
+			h.logger.Info("VPA recommendations added to payload:", "recommendations", vpaRecommendations)
+		} else {
+			h.logger.Info("No VPA recommendations found for pod:", "namespace", namespace, "name", name)
+		}
+		return payload, nil
+	}
+
+	initial, err := fetch()
+	if err != nil {
+		h.sseHandler.SendSSEError(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	h.sseHandler.SendSSEResponseWithUpdates(c, initial, fetch)
+}
+
 // ---------- Node metrics ----------
 
 // GetNodeMetricsSSE streams Prometheus-based node metrics as SSE
