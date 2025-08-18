@@ -17,7 +17,8 @@ type FeatureFlagsHandler struct {
 
 // FeatureFlagsResponse represents the response structure for feature flags
 type FeatureFlagsResponse struct {
-	EnableTracing bool `json:"enableTracing"`
+	EnableTracing    bool `json:"enableTracing"`
+	EnableCloudShell bool `json:"enableCloudShell"`
 }
 
 // NewFeatureFlagsHandler creates a new feature flags handler
@@ -31,11 +32,13 @@ func NewFeatureFlagsHandler(log *logger.Logger) *FeatureFlagsHandler {
 func (h *FeatureFlagsHandler) GetFeatureFlags(c *gin.Context) {
 	// Read runtime environment variables
 	enableTracing := h.getBoolEnvVar("ENABLE_TRACING", false)
+	enableCloudShell := h.getBoolEnvVar("ENABLE_CLOUD_SHELL", false)
 
-	h.logger.WithField("enableTracing", enableTracing).Debug("Serving feature flags")
+	h.logger.WithField("enableTracing", enableTracing).WithField("enableCloudShell", enableCloudShell).Debug("Serving feature flags")
 
 	response := FeatureFlagsResponse{
-		EnableTracing: enableTracing,
+		EnableTracing:    enableTracing,
+		EnableCloudShell: enableCloudShell,
 	}
 
 	c.JSON(http.StatusOK, response)

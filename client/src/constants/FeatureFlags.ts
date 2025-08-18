@@ -5,6 +5,7 @@ import { fetchRuntimeFeatureFlagsWithCache, type FeatureFlagsResponse } from '..
 
 export interface FeatureFlags {
   ENABLE_TRACING: boolean;
+  ENABLE_CLOUD_SHELL: boolean;
   // Add more feature flags here as needed
 }
 
@@ -20,6 +21,7 @@ const getBuildTimeFeatureFlag = (key: keyof FeatureFlags, defaultValue: boolean)
 // Build-time feature flags configuration (fallback)
 export const BUILD_TIME_FEATURE_FLAGS: FeatureFlags = {
   ENABLE_TRACING: getBuildTimeFeatureFlag('ENABLE_TRACING', false), // Default to false
+  ENABLE_CLOUD_SHELL: getBuildTimeFeatureFlag('ENABLE_CLOUD_SHELL', false), // Default to false
 };
 
 // Runtime feature flags (will be populated by the hook)
@@ -29,6 +31,7 @@ let runtimeFeatureFlags: FeatureFlags | null = null;
 export const setRuntimeFeatureFlags = (flags: FeatureFlagsResponse): void => {
   runtimeFeatureFlags = {
     ENABLE_TRACING: flags.enableTracing,
+    ENABLE_CLOUD_SHELL: flags.enableCloudShell,
   };
 };
 
@@ -51,6 +54,7 @@ export const getCurrentFeatureFlags = (): FeatureFlags => {
 
 // Export individual flags for convenience (these will use the priority system)
 export const getEnableTracing = (): boolean => isFeatureEnabled('ENABLE_TRACING');
+export const getEnableCloudShell = (): boolean => isFeatureEnabled('ENABLE_CLOUD_SHELL');
 
 // Async function to fetch and apply runtime feature flags
 export const initializeRuntimeFeatureFlags = async (): Promise<FeatureFlags> => {

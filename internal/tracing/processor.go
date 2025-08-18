@@ -2,7 +2,6 @@ package tracing
 
 import (
 	"context"
-	"fmt"
 
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/sdk/trace"
@@ -35,9 +34,6 @@ func (p *CustomSpanProcessor) OnEnd(s trace.ReadOnlySpan) {
 	// Convert OpenTelemetry span to our internal format
 	span := p.convertSpan(s)
 	traceID := span.TraceID
-
-	// Debug log span capture
-	fmt.Printf("[DEBUG] Capturing span: %s for trace: %s\n", span.SpanID, traceID)
 
 	// Get or create trace
 	p.store.mutex.Lock()

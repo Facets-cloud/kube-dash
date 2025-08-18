@@ -3,11 +3,13 @@ import kwFetch from '../kwFetch';
 // Feature flags response interface
 export interface FeatureFlagsResponse {
   enableTracing: boolean;
+  enableCloudShell: boolean;
 }
 
 // Default feature flags
 const DEFAULT_FEATURE_FLAGS: FeatureFlagsResponse = {
   enableTracing: false,
+  enableCloudShell: false,
 };
 
 /**
