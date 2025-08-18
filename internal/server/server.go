@@ -353,6 +353,8 @@ func (s *Server) setupRoutes() {
 
 		// Generic delete endpoint (bulk)
 		api.DELETE("/:resourcekind", s.baseResourcesHandler.DeleteResources)
+		// Optimized bulk delete endpoint for 5+ items
+		api.DELETE("/bulk/:resourcekind", s.baseResourcesHandler.BulkDeleteResources)
 		// Permission check endpoint for actions like delete
 		api.GET("/permissions/check", s.baseResourcesHandler.CheckPermission)
 		// Permission check endpoint for YAML editing

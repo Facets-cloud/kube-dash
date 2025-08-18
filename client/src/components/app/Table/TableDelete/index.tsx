@@ -176,11 +176,30 @@ const TableDelete = ({ selectedRows, toggleAllRowsSelected, postDeleteCallback }
       queryParamsObj['resource'] = resource;
       queryParamsObj['version'] = version;
     }
-    dispatch(deleteResources({
-      data,
-      resourcekind,
-      queryParams: new URLSearchParams(queryParamsObj).toString()
-    }));
+
+    // Use bulk endpoint for 5+ items, regular endpoint for smaller batches
+    const useBulkEndpoint = data.length >= 5;
+    
+    if (useBulkEndpoint) {
+      // Use bulk delete endpoint with enhanced payload structure
+      dispatch(deleteResources({
+        data: {
+          items: data,
+          batchSize: Math.min(10, Math.ceil(data.length / 3)) // Dynamic batch size
+        },
+        resourcekind,
+        queryParams: new URLSearchParams(queryParamsObj).toString(),
+        useBulkEndpoint: true
+      }));
+    } else {
+      // Use regular delete endpoint
+      dispatch(deleteResources({
+        data,
+        resourcekind,
+        queryParams: new URLSearchParams(queryParamsObj).toString()
+      }));
+    }
+    
     // Close dialog immediately after confirming
     setModalOpen(false);
   };
@@ -236,9 +255,14 @@ const TableDelete = ({ selectedRows, toggleAllRowsSelected, postDeleteCallback }
       </TooltipProvider>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Delete Resource</DialogTitle>
+          <DialogTitle>Delete Resource{selectedRows.length > 1 ? 's' : ''}</DialogTitle>
           <DialogDescription>
-            Are you sure you want to delete {selectedRows.length > 1 ? `${selectedRows.length} resources` : '1 resource'} ?
+            Are you sure you want to delete {selectedRows.length > 1 ? `${selectedRows.length} resources` : '1 resource'}?
+            {selectedRows.length >= 5 && (
+              <div className="mt-2 text-sm text-muted-foreground">
+                ⚡ Using optimized bulk delete for large selections
+              </div>
+            )}
           </DialogDescription>
         </DialogHeader>
 

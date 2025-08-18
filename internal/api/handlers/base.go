@@ -185,6 +185,213 @@ var resourceMapping = map[string]struct {
 	"helmreleases": {schema.GroupVersionResource{Group: "helm.sh", Version: "v3", Resource: "releases"}, true},
 }
 
+// BulkDeleteResourcesRequest represents a bulk delete request body for 5+ items
+type BulkDeleteResourcesRequest struct {
+	Items []struct {
+		Name      string `json:"name"`
+		Namespace string `json:"namespace,omitempty"`
+	} `json:"items"`
+	BatchSize int `json:"batchSize,omitempty"` // Optional batch size for processing
+}
+
+// BulkDeleteResourcesResponse represents the response for bulk operations
+type BulkDeleteResourcesResponse struct {
+	Total     int `json:"total"`
+	Processed int `json:"processed"`
+	Succeeded int `json:"succeeded"`
+	Failed    int `json:"failed"`
+	Failures  []struct {
+		Name      string `json:"name"`
+		Message   string `json:"message"`
+		Namespace string `json:"namespace,omitempty"`
+	} `json:"failures"`
+	Duration string `json:"duration"`
+}
+
+// BulkDeleteResources handles optimized bulk deletion for 5+ items
+func (h *ResourcesHandler) BulkDeleteResources(c *gin.Context) {
+	startTime := time.Now()
+	resourceKind := c.Param("resourcekind")
+
+	// Handle Helm releases specially
+	if resourceKind == "helmreleases" {
+		if h.helmHandler != nil {
+			h.helmHandler.DeleteHelmReleases(c)
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "helm handler not available"})
+		return
+	}
+
+	// Parse request body
+	var req BulkDeleteResourcesRequest
+	if err := c.BindJSON(&req); err != nil {
+		h.logger.WithError(err).Error("Failed to parse bulk delete request body")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+
+	if len(req.Items) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "no resources provided"})
+		return
+	}
+
+	// Enforce minimum threshold for bulk endpoint
+	if len(req.Items) < 5 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "bulk endpoint requires at least 5 items, use regular delete endpoint for smaller batches"})
+		return
+	}
+
+	h.logger.WithFields(map[string]interface{}{
+		"resource_kind": resourceKind,
+		"item_count":    len(req.Items),
+		"batch_size":    req.BatchSize,
+	}).Info("Starting bulk delete operation")
+
+	// Handle custom resources via explicit GVR parameters
+	var gvr schema.GroupVersionResource
+	var namespaced bool
+	if resourceKind == "customresources" {
+		group := c.Query("group")
+		version := c.Query("version")
+		resource := c.Query("resource")
+		if group == "" || version == "" || resource == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "group, version and resource query params are required for customresources"})
+			return
+		}
+		gvr = schema.GroupVersionResource{Group: group, Version: version, Resource: resource}
+		// Determine scope based on presence of namespace in items
+		namespaced = false
+		for _, item := range req.Items {
+			if item.Namespace != "" {
+				namespaced = true
+				break
+			}
+		}
+	} else {
+		mapping, ok := resourceMapping[resourceKind]
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("unsupported resource kind: %s", resourceKind)})
+			return
+		}
+		gvr = mapping.GVR
+		namespaced = mapping.Namespaced
+	}
+
+	dynamicClient, err := h.getDynamicClient(c)
+	if err != nil {
+		h.logger.WithError(err).Error("Failed to get dynamic client for bulk delete")
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Determine delete options
+	var deleteOptions metav1.DeleteOptions
+	{
+		forceParam := c.DefaultQuery("force", "false")
+		gracePeriodParam := c.Query("gracePeriodSeconds")
+
+		if resourceKind == "pods" && (strings.EqualFold(forceParam, "true") || forceParam == "1") {
+			gp := int64(0)
+			deleteOptions.GracePeriodSeconds = &gp
+		} else if gracePeriodParam != "" {
+			if gp, err := strconv.ParseInt(gracePeriodParam, 10, 64); err == nil {
+				deleteOptions.GracePeriodSeconds = &gp
+			}
+		}
+	}
+
+	// Set default batch size if not provided
+	batchSize := req.BatchSize
+	if batchSize <= 0 {
+		batchSize = 10 // Default batch size for bulk operations
+	}
+
+	// Initialize response
+	resp := BulkDeleteResourcesResponse{
+		Total:     len(req.Items),
+		Processed: 0,
+		Succeeded: 0,
+		Failed:    0,
+		Failures:  []struct {
+			Name      string `json:"name"`
+			Message   string `json:"message"`
+			Namespace string `json:"namespace,omitempty"`
+		}{},
+	}
+
+	// Process deletions in batches with progress logging
+	for i := 0; i < len(req.Items); i += batchSize {
+		end := i + batchSize
+		if end > len(req.Items) {
+			end = len(req.Items)
+		}
+
+		batch := req.Items[i:end]
+		h.logger.WithFields(map[string]interface{}{
+			"batch_start": i + 1,
+			"batch_end":   end,
+			"batch_size":  len(batch),
+			"total":       len(req.Items),
+		}).Info("Processing bulk delete batch")
+
+		// Process each item in the current batch
+		for _, item := range batch {
+			var delErr error
+			if namespaced {
+				if item.Namespace == "" {
+					delErr = fmt.Errorf("namespace is required for namespaced resource %s", resourceKind)
+				} else {
+					delErr = dynamicClient.Resource(gvr).Namespace(item.Namespace).Delete(c.Request.Context(), item.Name, deleteOptions)
+				}
+			} else {
+				delErr = dynamicClient.Resource(gvr).Delete(c.Request.Context(), item.Name, deleteOptions)
+			}
+
+			resp.Processed++
+
+			if delErr != nil {
+				resp.Failed++
+				h.logger.WithError(delErr).WithFields(map[string]interface{}{
+					"resource":    resourceKind,
+					"name":        item.Name,
+					"namespace":   item.Namespace,
+					"group":       gvr.Group,
+					"version":     gvr.Version,
+					"gvrResource": gvr.Resource,
+					"batch_progress": fmt.Sprintf("%d/%d", resp.Processed, resp.Total),
+				}).Error("Failed to delete resource in bulk operation")
+
+				resp.Failures = append(resp.Failures, struct {
+					Name      string `json:"name"`
+					Message   string `json:"message"`
+					Namespace string `json:"namespace,omitempty"`
+				}{Name: item.Name, Message: delErr.Error(), Namespace: item.Namespace})
+			} else {
+				resp.Succeeded++
+			}
+		}
+
+		// Add small delay between batches to avoid overwhelming the API server
+		if end < len(req.Items) {
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+
+	resp.Duration = time.Since(startTime).String()
+
+	h.logger.WithFields(map[string]interface{}{
+		"resource_kind": resourceKind,
+		"total":         resp.Total,
+		"succeeded":     resp.Succeeded,
+		"failed":        resp.Failed,
+		"duration":      resp.Duration,
+	}).Info("Completed bulk delete operation")
+
+	// Return success with detailed statistics
+	c.JSON(http.StatusOK, resp)
+}
+
 // DeleteResources handles bulk deletion for various Kubernetes resources
 func (h *ResourcesHandler) DeleteResources(c *gin.Context) {
 	resourceKind := c.Param("resourcekind")

@@ -611,7 +611,7 @@ const AddConfig = () => {
                             id="kubeconfigFile"
                             type='file'
                             multiple
-                            accept=".yaml,.yml,.kubeconfig,*-kubeconfig"
+                            accept=".yaml,.yml,.kubeconfig,-kubeconfig"
                             className='shadow-none flex-1'
                             onChange={handleFileChange}
                           />
