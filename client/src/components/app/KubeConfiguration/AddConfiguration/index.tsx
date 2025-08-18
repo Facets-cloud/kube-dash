@@ -117,7 +117,8 @@ const AddConfig = () => {
     const files = Array.from(e.dataTransfer.files).filter(file => 
       file.name.endsWith('.yaml') || 
       file.name.endsWith('.yml') || 
-      file.name.endsWith('.kubeconfig')
+      file.name.endsWith('.kubeconfig') ||
+      file.name.endsWith('-kubeconfig')
     );
     
     if (files.length > 0) {
@@ -610,7 +611,7 @@ const AddConfig = () => {
                             id="kubeconfigFile"
                             type='file'
                             multiple
-                            accept=".yaml,.yml,.kubeconfig"
+                            accept=".yaml,.yml,.kubeconfig,*-kubeconfig"
                             className='shadow-none flex-1'
                             onChange={handleFileChange}
                           />
