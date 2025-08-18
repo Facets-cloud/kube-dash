@@ -13,6 +13,7 @@ import (
 
 	"github.com/Facets-cloud/kube-dash/internal/k8s"
 	"github.com/Facets-cloud/kube-dash/internal/storage"
+	"github.com/Facets-cloud/kube-dash/internal/tracing"
 	"github.com/Facets-cloud/kube-dash/pkg/logger"
 
 	"github.com/gin-gonic/gin"
@@ -30,6 +31,7 @@ type PodLogsHandler struct {
 	clientFactory *k8s.ClientFactory
 	logger        *logger.Logger
 	upgrader      websocket.Upgrader
+	tracingHelper *tracing.TracingHelper
 }
 
 // LogMessage represents a single log entry
@@ -64,6 +66,7 @@ func NewPodLogsHandler(store *storage.KubeConfigStore, clientFactory *k8s.Client
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
 		},
+		tracingHelper: tracing.GetTracingHelper(),
 	}
 }
 
@@ -182,17 +185,31 @@ func (h *PodLogsHandler) detectLogLevel(logLine string) string {
 
 // HandlePodLogs handles WebSocket-based pod logs streaming
 func (h *PodLogsHandler) HandlePodLogs(c *gin.Context) {
+	// Start main span for pod logs operation
+	ctx, span := h.tracingHelper.StartAuthSpan(c.Request.Context(), "websocket.pod_logs")
+	defer span.End()
+
+	// Add resource attributes
+	podName := c.Param("name")
+	namespace := c.Param("namespace")
+	h.tracingHelper.AddResourceAttributes(span, podName, "pod", 1)
+
+	// Child span for WebSocket connection setup
+	connCtx, connSpan := h.tracingHelper.StartKubernetesAPISpan(ctx, "connection_setup", "websocket", namespace)
 	// Upgrade HTTP connection to WebSocket
 	conn, err := h.upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		h.logger.WithError(err).Error("Failed to upgrade connection to WebSocket")
+		h.tracingHelper.RecordError(connSpan, err, "Failed to upgrade WebSocket connection")
+		connSpan.End()
+		h.tracingHelper.RecordError(span, err, "Pod logs operation failed")
 		return
 	}
 	defer conn.Close()
+	h.tracingHelper.RecordSuccess(connSpan, "WebSocket connection established")
+	connSpan.End()
 
 	// Get parameters
-	podName := c.Param("name")
-	namespace := c.Param("namespace")
 	container := c.Query("container")
 	allContainers := c.Query("all-containers") == "true"
 
@@ -214,21 +231,35 @@ func (h *PodLogsHandler) HandlePodLogs(c *gin.Context) {
 		}
 	}
 
+	// Child span for client acquisition
+	clientCtx, clientSpan := h.tracingHelper.StartAuthSpan(connCtx, "client_acquisition")
 	// Get Kubernetes client and config
 	client, _, err := h.getClientAndConfig(c)
 	if err != nil {
 		h.logger.WithError(err).Error("Failed to get Kubernetes client for pod logs")
 		h.sendWebSocketError(conn, err.Error())
+		h.tracingHelper.RecordError(clientSpan, err, "Failed to get Kubernetes client")
+		clientSpan.End()
+		h.tracingHelper.RecordError(span, err, "Pod logs operation failed")
 		return
 	}
+	h.tracingHelper.RecordSuccess(clientSpan, "Kubernetes client acquired")
+	clientSpan.End()
 
+	// Child span for pod validation
+	validationCtx, validationSpan := h.tracingHelper.StartKubernetesAPISpan(clientCtx, "pod_validation", "pod", namespace)
 	// Verify pod exists
 	pod, err := client.CoreV1().Pods(namespace).Get(c.Request.Context(), podName, metav1.GetOptions{})
 	if err != nil {
 		h.logger.WithError(err).WithField("pod", podName).WithField("namespace", namespace).Error("Failed to get pod for logs")
 		h.sendWebSocketError(conn, fmt.Sprintf("Pod not found: %v", err))
+		h.tracingHelper.RecordError(validationSpan, err, "Failed to get pod")
+		validationSpan.End()
+		h.tracingHelper.RecordError(span, err, "Pod logs operation failed")
 		return
 	}
+	h.tracingHelper.RecordSuccess(validationSpan, "Pod validation completed")
+	validationSpan.End()
 
 	// Send connection established message
 	connectionMsg := ControlMessage{
@@ -242,15 +273,23 @@ func (h *PodLogsHandler) HandlePodLogs(c *gin.Context) {
 	}
 	h.sendWebSocketMessage(conn, connectionMsg)
 
+	// Child span for log streaming operations
+	streamCtx, streamSpan := h.tracingHelper.StartKubernetesAPISpan(validationCtx, "log_streaming", "pod", namespace)
+	defer func() {
+		h.tracingHelper.RecordSuccess(streamSpan, "Log streaming completed")
+		streamSpan.End()
+		h.tracingHelper.RecordSuccess(span, "Pod logs operation completed")
+	}()
+
 	// Create context for cancellation
-	ctx, cancel := context.WithCancel(c.Request.Context())
+	streamingCtx, cancel := context.WithCancel(streamCtx)
 	defer cancel()
 
 	// Handle WebSocket messages from client (for pause/resume, etc.)
 	go func() {
 		for {
 			select {
-			case <-ctx.Done():
+			case <-streamingCtx.Done():
 				return
 			default:
 				_, message, err := conn.ReadMessage()
@@ -300,7 +339,7 @@ func (h *PodLogsHandler) HandlePodLogs(c *gin.Context) {
 		}
 
 		req := client.CoreV1().Pods(namespace).GetLogs(podName, podLogOptions)
-		stream, err := req.Stream(ctx)
+		stream, err := req.Stream(streamingCtx)
 		if err != nil {
 			h.logger.WithError(err).WithField("container", containerName).Error("Failed to get log stream")
 			return err
@@ -322,8 +361,8 @@ func (h *PodLogsHandler) HandlePodLogs(c *gin.Context) {
 
 		for scanner.Scan() {
 			select {
-			case <-ctx.Done():
-				return ctx.Err()
+			case <-streamingCtx.Done():
+				return streamingCtx.Err()
 			default:
 				logLine := scanner.Text()
 				if logLine == "" {
@@ -369,16 +408,16 @@ func (h *PodLogsHandler) HandlePodLogs(c *gin.Context) {
 		for _, containerSpec := range pod.Spec.Containers {
 			go func(containerName string) {
 				if err := streamContainerLogs(containerName); err != nil {
-					if ctx.Err() == nil { // Only log if not cancelled
-						h.logger.WithError(err).WithField("container", containerName).Error("Error streaming container logs")
-					}
+					if streamingCtx.Err() == nil { // Only log if not cancelled
+					h.logger.WithError(err).WithField("container", containerName).Error("Error streaming container logs")
+				}
 				}
 			}(containerSpec.Name)
 		}
 	} else if container != "" {
 		// Stream logs from specific container
 		if err := streamContainerLogs(container); err != nil {
-			if ctx.Err() == nil { // Only log if not cancelled
+			if streamingCtx.Err() == nil { // Only log if not cancelled
 				h.logger.WithError(err).WithField("container", container).Error("Error streaming container logs")
 			}
 		}
@@ -386,7 +425,7 @@ func (h *PodLogsHandler) HandlePodLogs(c *gin.Context) {
 		// Default to first container
 		if len(pod.Spec.Containers) > 0 {
 			if err := streamContainerLogs(pod.Spec.Containers[0].Name); err != nil {
-				if ctx.Err() == nil { // Only log if not cancelled
+				if streamingCtx.Err() == nil { // Only log if not cancelled
 					h.logger.WithError(err).WithField("container", pod.Spec.Containers[0].Name).Error("Error streaming container logs")
 				}
 			}
@@ -394,7 +433,7 @@ func (h *PodLogsHandler) HandlePodLogs(c *gin.Context) {
 	}
 
 	// Wait for context cancellation
-	<-ctx.Done()
+	<-streamingCtx.Done()
 
 	// Send disconnection message
 	disconnectMsg := ControlMessage{

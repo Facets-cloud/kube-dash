@@ -8,6 +8,7 @@ import (
 	"github.com/Facets-cloud/kube-dash/internal/api/utils"
 	"github.com/Facets-cloud/kube-dash/internal/k8s"
 	"github.com/Facets-cloud/kube-dash/internal/storage"
+	"github.com/Facets-cloud/kube-dash/internal/tracing"
 	"github.com/Facets-cloud/kube-dash/pkg/logger"
 
 	"github.com/gin-gonic/gin"
@@ -27,6 +28,7 @@ type CustomResourcesHandler struct {
 	sseHandler    *utils.SSEHandler
 	yamlHandler   *utils.YAMLHandler
 	eventsHandler *utils.EventsHandler
+	tracingHelper *tracing.TracingHelper
 }
 
 // NewCustomResourcesHandler creates a new CustomResourcesHandler
@@ -38,6 +40,7 @@ func NewCustomResourcesHandler(store *storage.KubeConfigStore, clientFactory *k8
 		sseHandler:    utils.NewSSEHandler(log),
 		yamlHandler:   utils.NewYAMLHandler(log),
 		eventsHandler: utils.NewEventsHandler(log),
+		tracingHelper: tracing.GetTracingHelper(),
 	}
 }
 
@@ -114,23 +117,41 @@ func (h *CustomResourcesHandler) getDynamicClient(c *gin.Context) (dynamic.Inter
 
 // GetCustomResources returns custom resources for a specific CRD
 func (h *CustomResourcesHandler) GetCustomResources(c *gin.Context) {
-	dynamicClient, err := h.getDynamicClient(c)
-	if err != nil {
-		h.logger.WithError(err).Error("Failed to get dynamic client for custom resources")
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	// Start main span for custom resources list operation
+	ctx, span := h.tracingHelper.StartAuthSpan(c.Request.Context(), "custom_resource.list")
+	defer span.End()
 
 	group := c.Query("group")
 	version := c.Query("version")
 	resource := c.Query("resource")
 	namespace := c.Query("namespace")
 
+	// Add resource attributes
+	h.tracingHelper.AddResourceAttributes(span, resource, "custom_resource", 1)
+
 	if group == "" || version == "" || resource == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "group, version, and resource parameters are required"})
+		err := fmt.Errorf("group, version, and resource parameters are required")
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		h.tracingHelper.RecordError(span, err, "GetCustomResources failed")
 		return
 	}
 
+	// Child span for client acquisition
+	clientCtx, clientSpan := h.tracingHelper.StartAuthSpan(ctx, "custom_resource.client_acquisition")
+	dynamicClient, err := h.getDynamicClient(c)
+	if err != nil {
+		h.logger.WithError(err).Error("Failed to get dynamic client for custom resources")
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		h.tracingHelper.RecordError(clientSpan, err, "Failed to get dynamic client")
+		clientSpan.End()
+		h.tracingHelper.RecordError(span, err, "GetCustomResources failed")
+		return
+	}
+	h.tracingHelper.RecordSuccess(clientSpan, "Dynamic client acquired")
+	clientSpan.End()
+
+	// Child span for Kubernetes API operations
+	apiCtx, apiSpan := h.tracingHelper.StartKubernetesAPISpan(clientCtx, "list", "custom_resources", namespace)
 	gvr := schema.GroupVersionResource{
 		Group:    group,
 		Version:  version,
@@ -141,46 +162,75 @@ func (h *CustomResourcesHandler) GetCustomResources(c *gin.Context) {
 	var err2 error
 
 	if namespace != "" {
-		crList, err2 = dynamicClient.Resource(gvr).Namespace(namespace).List(c.Request.Context(), metav1.ListOptions{})
+		crList, err2 = dynamicClient.Resource(gvr).Namespace(namespace).List(apiCtx, metav1.ListOptions{})
 	} else {
-		crList, err2 = dynamicClient.Resource(gvr).List(c.Request.Context(), metav1.ListOptions{})
+		crList, err2 = dynamicClient.Resource(gvr).List(apiCtx, metav1.ListOptions{})
 	}
 
 	if err2 != nil {
 		h.logger.WithError(err2).Error("Failed to list custom resources")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err2.Error()})
+		h.tracingHelper.RecordError(apiSpan, err2, "Failed to list custom resources")
+		apiSpan.End()
+		h.tracingHelper.RecordError(span, err2, "GetCustomResources failed")
 		return
 	}
+	h.tracingHelper.RecordSuccess(apiSpan, "Custom resources list API call completed")
+	apiSpan.End()
 
+	// Child span for data processing
+	_, processingSpan := h.tracingHelper.StartDataProcessingSpan(apiCtx, "custom_resource.data_processing")
 	// Return only the items array for non-SSE list requests (UI containers expect array)
 	if ul, ok := crList.(interface{ UnstructuredContent() map[string]interface{} }); ok {
 		content := ul.UnstructuredContent()
 		if items, exists := content["items"].([]interface{}); exists {
+			h.tracingHelper.RecordSuccess(processingSpan, "Data processing completed")
+			processingSpan.End()
 			c.JSON(http.StatusOK, items)
+			h.tracingHelper.RecordSuccess(span, "Custom resources list operation completed")
 			return
 		}
 	}
+	h.tracingHelper.RecordSuccess(processingSpan, "Data processing completed")
+	processingSpan.End()
 	c.JSON(http.StatusOK, crList)
+	h.tracingHelper.RecordSuccess(span, "Custom resources list operation completed")
 }
 
 // GetCustomResourcesSSE returns custom resources as Server-Sent Events
 func (h *CustomResourcesHandler) GetCustomResourcesSSE(c *gin.Context) {
-	dynamicClient, err := h.getDynamicClient(c)
-	if err != nil {
-		h.logger.WithError(err).Error("Failed to get dynamic client for custom resources SSE")
-		h.sseHandler.SendSSEError(c, http.StatusBadRequest, err.Error())
-		return
-	}
+	// Start main span for custom resources SSE operation
+	ctx, span := h.tracingHelper.StartAuthSpan(c.Request.Context(), "custom_resource.list_sse")
+	defer span.End()
 
 	group := c.Query("group")
 	version := c.Query("version")
 	resource := c.Query("resource")
 	namespace := c.Query("namespace")
 
+	// Add resource attributes
+	h.tracingHelper.AddResourceAttributes(span, resource, "custom_resource", 1)
+
 	if group == "" || version == "" || resource == "" {
-		h.sseHandler.SendSSEError(c, http.StatusBadRequest, "group, version, and resource parameters are required")
+		err := fmt.Errorf("group, version, and resource parameters are required")
+		h.sseHandler.SendSSEError(c, http.StatusBadRequest, err.Error())
+		h.tracingHelper.RecordError(span, err, "GetCustomResourcesSSE failed")
 		return
 	}
+
+	// Child span for client acquisition
+	clientCtx, clientSpan := h.tracingHelper.StartAuthSpan(ctx, "custom_resource.client_acquisition")
+	dynamicClient, err := h.getDynamicClient(c)
+	if err != nil {
+		h.logger.WithError(err).Error("Failed to get dynamic client for custom resources SSE")
+		h.sseHandler.SendSSEError(c, http.StatusBadRequest, err.Error())
+		h.tracingHelper.RecordError(clientSpan, err, "Failed to get dynamic client")
+		clientSpan.End()
+		h.tracingHelper.RecordError(span, err, "GetCustomResourcesSSE failed")
+		return
+	}
+	h.tracingHelper.RecordSuccess(clientSpan, "Dynamic client acquired")
+	clientSpan.End()
 
 	gvr := schema.GroupVersionResource{
 		Group:    group,
@@ -190,16 +240,26 @@ func (h *CustomResourcesHandler) GetCustomResourcesSSE(c *gin.Context) {
 
 	// Helper to fetch and shape list response
 	fetchList := func() (interface{}, error) {
+		// Child span for Kubernetes API operations within fetchList
+		apiCtx, apiSpan := h.tracingHelper.StartKubernetesAPISpan(clientCtx, "list", "custom_resources", namespace)
+		defer apiSpan.End()
+
 		var listObj interface{}
 		var err2 error
 		if namespace != "" {
-			listObj, err2 = dynamicClient.Resource(gvr).Namespace(namespace).List(c.Request.Context(), metav1.ListOptions{})
+			listObj, err2 = dynamicClient.Resource(gvr).Namespace(namespace).List(apiCtx, metav1.ListOptions{})
 		} else {
-			listObj, err2 = dynamicClient.Resource(gvr).List(c.Request.Context(), metav1.ListOptions{})
+			listObj, err2 = dynamicClient.Resource(gvr).List(apiCtx, metav1.ListOptions{})
 		}
 		if err2 != nil {
+			h.tracingHelper.RecordError(apiSpan, err2, "Failed to list custom resources")
 			return nil, err2
 		}
+		h.tracingHelper.RecordSuccess(apiSpan, "Custom resources list API call completed")
+
+		// Child span for data processing
+		_, processingSpan := h.tracingHelper.StartDataProcessingSpan(apiCtx, "custom_resource.data_processing")
+		defer processingSpan.End()
 
 		// Extract items array
 		var items []interface{}
@@ -212,6 +272,7 @@ func (h *CustomResourcesHandler) GetCustomResourcesSSE(c *gin.Context) {
 		// Best-effort: derive additional printer columns from CRD
 		apc, _ := h.getAdditionalPrinterColumns(c, dynamicClient, group, resource, version)
 
+		h.tracingHelper.RecordSuccess(processingSpan, "Data processing completed")
 		return gin.H{
 			"additionalPrinterColumns": apc,
 			"list":                     items,
@@ -227,6 +288,7 @@ func (h *CustomResourcesHandler) GetCustomResourcesSSE(c *gin.Context) {
 		} else {
 			h.sseHandler.SendSSEError(c, http.StatusInternalServerError, err.Error())
 		}
+		h.tracingHelper.RecordError(span, err, "GetCustomResourcesSSE failed")
 		return
 	}
 
@@ -234,21 +296,20 @@ func (h *CustomResourcesHandler) GetCustomResourcesSSE(c *gin.Context) {
 	acceptHeader := c.GetHeader("Accept")
 	if acceptHeader == "text/event-stream" {
 		h.sseHandler.SendSSEResponseWithUpdates(c, initialData, fetchList)
+		h.tracingHelper.RecordSuccess(span, "Custom resources SSE stream established")
 		return
 	}
 
 	// For non-SSE requests, return JSON
 	c.JSON(http.StatusOK, initialData)
+	h.tracingHelper.RecordSuccess(span, "Custom resources SSE operation completed")
 }
 
 // GetCustomResource returns a specific custom resource
 func (h *CustomResourcesHandler) GetCustomResource(c *gin.Context) {
-	dynamicClient, err := h.getDynamicClient(c)
-	if err != nil {
-		h.logger.WithError(err).Error("Failed to get dynamic client for custom resource")
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	// Start main span for single custom resource retrieval operation
+	ctx, span := h.tracingHelper.StartAuthSpan(c.Request.Context(), "custom_resource.get")
+	defer span.End()
 
 	group := c.Query("group")
 	version := c.Query("version")
@@ -256,11 +317,32 @@ func (h *CustomResourcesHandler) GetCustomResource(c *gin.Context) {
 	namespace := c.Param("namespace")
 	name := c.Param("name")
 
+	// Add resource attributes
+	h.tracingHelper.AddResourceAttributes(span, name, "custom_resource", 1)
+
 	if group == "" || version == "" || resource == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "group, version, and resource parameters are required"})
+		err := fmt.Errorf("group, version, and resource parameters are required")
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		h.tracingHelper.RecordError(span, err, "GetCustomResource failed")
 		return
 	}
 
+	// Child span for client acquisition
+	clientCtx, clientSpan := h.tracingHelper.StartAuthSpan(ctx, "custom_resource.client_acquisition")
+	dynamicClient, err := h.getDynamicClient(c)
+	if err != nil {
+		h.logger.WithError(err).Error("Failed to get dynamic client for custom resource")
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		h.tracingHelper.RecordError(clientSpan, err, "Failed to get dynamic client")
+		clientSpan.End()
+		h.tracingHelper.RecordError(span, err, "GetCustomResource failed")
+		return
+	}
+	h.tracingHelper.RecordSuccess(clientSpan, "Dynamic client acquired")
+	clientSpan.End()
+
+	// Child span for Kubernetes API operations
+	apiCtx, apiSpan := h.tracingHelper.StartKubernetesAPISpan(clientCtx, "get", "custom_resource", namespace)
 	gvr := schema.GroupVersionResource{
 		Group:    group,
 		Version:  version,
@@ -271,35 +353,39 @@ func (h *CustomResourcesHandler) GetCustomResource(c *gin.Context) {
 	var err2 error
 
 	if namespace != "" {
-		cr, err2 = dynamicClient.Resource(gvr).Namespace(namespace).Get(c.Request.Context(), name, metav1.GetOptions{})
+		cr, err2 = dynamicClient.Resource(gvr).Namespace(namespace).Get(apiCtx, name, metav1.GetOptions{})
 	} else {
-		cr, err2 = dynamicClient.Resource(gvr).Get(c.Request.Context(), name, metav1.GetOptions{})
+		cr, err2 = dynamicClient.Resource(gvr).Get(apiCtx, name, metav1.GetOptions{})
 	}
 
 	if err2 != nil {
 		h.logger.WithError(err2).WithField("custom_resource", name).Error("Failed to get custom resource")
 		c.JSON(http.StatusNotFound, gin.H{"error": err2.Error()})
+		h.tracingHelper.RecordError(apiSpan, err2, "Failed to get custom resource")
+		apiSpan.End()
+		h.tracingHelper.RecordError(span, err2, "GetCustomResource failed")
 		return
 	}
+	h.tracingHelper.RecordSuccess(apiSpan, "Custom resource get API call completed")
+	apiSpan.End()
 
 	// Check if this is an SSE request (EventSource expects SSE format)
 	acceptHeader := c.GetHeader("Accept")
 	if acceptHeader == "text/event-stream" {
 		h.sseHandler.SendSSEResponse(c, cr)
+		h.tracingHelper.RecordSuccess(span, "Custom resource SSE response sent")
 		return
 	}
 
 	c.JSON(http.StatusOK, cr)
+	h.tracingHelper.RecordSuccess(span, "Custom resource get operation completed")
 }
 
 // GetCustomResourceYAML returns the YAML for a specific custom resource (namespaced path)
 func (h *CustomResourcesHandler) GetCustomResourceYAML(c *gin.Context) {
-	dynamicClient, err := h.getDynamicClient(c)
-	if err != nil {
-		h.logger.WithError(err).Error("Failed to get dynamic client for custom resource YAML")
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	// Start main span for custom resource YAML operation
+	ctx, span := h.tracingHelper.StartAuthSpan(c.Request.Context(), "custom_resource.get_yaml")
+	defer span.End()
 
 	group := c.Query("group")
 	version := c.Query("version")
@@ -307,31 +393,59 @@ func (h *CustomResourcesHandler) GetCustomResourceYAML(c *gin.Context) {
 	namespace := c.Param("namespace")
 	name := c.Param("name")
 
+	// Add resource attributes
+	h.tracingHelper.AddResourceAttributes(span, name, "custom_resource", 1)
+
 	if group == "" || version == "" || resource == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "group, version, and resource parameters are required"})
+		err := fmt.Errorf("group, version, and resource parameters are required")
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		h.tracingHelper.RecordError(span, err, "GetCustomResourceYAML failed")
 		return
 	}
 
-	gvr := schema.GroupVersionResource{Group: group, Version: version, Resource: resource}
-
-	obj, err2 := dynamicClient.Resource(gvr).Namespace(namespace).Get(c.Request.Context(), name, metav1.GetOptions{})
-	if err2 != nil {
-		h.logger.WithError(err2).WithField("custom_resource", name).Error("Failed to get custom resource for YAML")
-		c.JSON(http.StatusNotFound, gin.H{"error": err2.Error()})
-		return
-	}
-
-	h.yamlHandler.SendYAMLResponse(c, obj, name)
-}
-
-// GetCustomResourceYAMLByName returns the YAML for a specific custom resource (cluster-scoped path with optional namespace via query)
-func (h *CustomResourcesHandler) GetCustomResourceYAMLByName(c *gin.Context) {
+	// Child span for client acquisition
+	clientCtx, clientSpan := h.tracingHelper.StartAuthSpan(ctx, "custom_resource.client_acquisition")
 	dynamicClient, err := h.getDynamicClient(c)
 	if err != nil {
 		h.logger.WithError(err).Error("Failed to get dynamic client for custom resource YAML")
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		h.tracingHelper.RecordError(clientSpan, err, "Failed to get dynamic client")
+		clientSpan.End()
+		h.tracingHelper.RecordError(span, err, "GetCustomResourceYAML failed")
 		return
 	}
+	h.tracingHelper.RecordSuccess(clientSpan, "Dynamic client acquired")
+	clientSpan.End()
+
+	// Child span for Kubernetes API operations
+	apiCtx, apiSpan := h.tracingHelper.StartKubernetesAPISpan(clientCtx, "get", "custom_resource", namespace)
+	gvr := schema.GroupVersionResource{Group: group, Version: version, Resource: resource}
+
+	obj, err2 := dynamicClient.Resource(gvr).Namespace(namespace).Get(apiCtx, name, metav1.GetOptions{})
+	if err2 != nil {
+		h.logger.WithError(err2).WithField("custom_resource", name).Error("Failed to get custom resource for YAML")
+		c.JSON(http.StatusNotFound, gin.H{"error": err2.Error()})
+		h.tracingHelper.RecordError(apiSpan, err2, "Failed to get custom resource")
+		apiSpan.End()
+		h.tracingHelper.RecordError(span, err2, "GetCustomResourceYAML failed")
+		return
+	}
+	h.tracingHelper.RecordSuccess(apiSpan, "Custom resource get API call completed")
+	apiSpan.End()
+
+	// Child span for YAML generation
+	_, yamlSpan := h.tracingHelper.StartDataProcessingSpan(apiCtx, "custom_resource.yaml_generation")
+	h.yamlHandler.SendYAMLResponse(c, obj, name)
+	h.tracingHelper.RecordSuccess(yamlSpan, "YAML generation completed")
+	yamlSpan.End()
+	h.tracingHelper.RecordSuccess(span, "Custom resource YAML operation completed")
+}
+
+// GetCustomResourceYAMLByName returns the YAML for a specific custom resource (cluster-scoped path with optional namespace via query)
+func (h *CustomResourcesHandler) GetCustomResourceYAMLByName(c *gin.Context) {
+	// Start main span for custom resource YAML by name operation
+	ctx, span := h.tracingHelper.StartAuthSpan(c.Request.Context(), "custom_resource.get_yaml_by_name")
+	defer span.End()
 
 	group := c.Query("group")
 	version := c.Query("version")
@@ -339,44 +453,65 @@ func (h *CustomResourcesHandler) GetCustomResourceYAMLByName(c *gin.Context) {
 	namespace := c.Query("namespace")
 	name := c.Param("name")
 
+	// Add resource attributes
+	h.tracingHelper.AddResourceAttributes(span, resource, "custom_resource", 1)
+
 	if group == "" || version == "" || resource == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "group, version, and resource parameters are required"})
+		err := fmt.Errorf("group, version, and resource parameters are required")
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		h.tracingHelper.RecordError(span, err, "GetCustomResourceYAMLByName failed")
 		return
 	}
 
+	// Child span for client acquisition
+	clientCtx, clientSpan := h.tracingHelper.StartAuthSpan(ctx, "custom_resource.client_acquisition")
+	dynamicClient, err := h.getDynamicClient(c)
+	if err != nil {
+		h.logger.WithError(err).Error("Failed to get dynamic client for custom resource YAML")
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		h.tracingHelper.RecordError(clientSpan, err, "Failed to get dynamic client")
+		clientSpan.End()
+		h.tracingHelper.RecordError(span, err, "GetCustomResourceYAMLByName failed")
+		return
+	}
+	h.tracingHelper.RecordSuccess(clientSpan, "Dynamic client acquired")
+	clientSpan.End()
+
+	// Child span for Kubernetes API operations
+	apiCtx, apiSpan := h.tracingHelper.StartKubernetesAPISpan(clientCtx, "custom_resource.get_api_call", "get", "custom_resource")
 	gvr := schema.GroupVersionResource{Group: group, Version: version, Resource: resource}
 
 	var obj interface{}
 	var err2 error
 	if namespace != "" {
-		obj, err2 = dynamicClient.Resource(gvr).Namespace(namespace).Get(c.Request.Context(), name, metav1.GetOptions{})
+		obj, err2 = dynamicClient.Resource(gvr).Namespace(namespace).Get(apiCtx, name, metav1.GetOptions{})
 	} else {
-		obj, err2 = dynamicClient.Resource(gvr).Get(c.Request.Context(), name, metav1.GetOptions{})
+		obj, err2 = dynamicClient.Resource(gvr).Get(apiCtx, name, metav1.GetOptions{})
 	}
 	if err2 != nil {
 		h.logger.WithError(err2).WithField("custom_resource", name).Error("Failed to get custom resource for YAML")
 		c.JSON(http.StatusNotFound, gin.H{"error": err2.Error()})
+		h.tracingHelper.RecordError(apiSpan, err2, "Failed to get custom resource")
+		apiSpan.End()
+		h.tracingHelper.RecordError(span, err2, "GetCustomResourceYAMLByName failed")
 		return
 	}
+	h.tracingHelper.RecordSuccess(apiSpan, "Custom resource get API call completed")
+	apiSpan.End()
 
+	// Child span for YAML generation
+	_, yamlSpan := h.tracingHelper.StartDataProcessingSpan(apiCtx, "custom_resource.yaml_generation")
 	h.yamlHandler.SendYAMLResponse(c, obj, name)
+	h.tracingHelper.RecordSuccess(yamlSpan, "YAML generation completed")
+	yamlSpan.End()
+	h.tracingHelper.RecordSuccess(span, "Custom resource YAML by name operation completed")
 }
 
 // GetCustomResourceEvents returns events for a specific custom resource (namespaced path)
 func (h *CustomResourcesHandler) GetCustomResourceEvents(c *gin.Context) {
-	client, err := h.getClientAndConfig(c)
-	if err != nil {
-		h.logger.WithError(err).Error("Failed to get client for custom resource events")
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	dynamicClient, err := h.getDynamicClient(c)
-	if err != nil {
-		h.logger.WithError(err).Error("Failed to get dynamic client for custom resource events")
-		h.sseHandler.SendSSEError(c, http.StatusBadRequest, err.Error())
-		return
-	}
+	// Start main span for custom resource events operation
+	ctx, span := h.tracingHelper.StartAuthSpan(c.Request.Context(), "custom_resource.get_events")
+	defer span.End()
 
 	group := c.Query("group")
 	version := c.Query("version")
@@ -384,20 +519,58 @@ func (h *CustomResourcesHandler) GetCustomResourceEvents(c *gin.Context) {
 	namespace := c.Param("namespace")
 	name := c.Param("name")
 
+	// Add resource attributes
+	h.tracingHelper.AddResourceAttributes(span, resource, "custom_resource", 1)
+
 	if group == "" || version == "" || resource == "" {
-		h.sseHandler.SendSSEError(c, http.StatusBadRequest, "group, version, and resource parameters are required")
+		err := fmt.Errorf("group, version, and resource parameters are required")
+		h.sseHandler.SendSSEError(c, http.StatusBadRequest, err.Error())
+		h.tracingHelper.RecordError(span, err, "GetCustomResourceEvents failed")
 		return
 	}
 
+	// Child span for client acquisition
+	clientCtx, clientSpan := h.tracingHelper.StartAuthSpan(ctx, "custom_resource.client_acquisition")
+	client, err := h.getClientAndConfig(c)
+	if err != nil {
+		h.logger.WithError(err).Error("Failed to get client for custom resource events")
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		h.tracingHelper.RecordError(clientSpan, err, "Failed to get client")
+		clientSpan.End()
+		h.tracingHelper.RecordError(span, err, "GetCustomResourceEvents failed")
+		return
+	}
+
+	dynamicClient, err := h.getDynamicClient(c)
+	if err != nil {
+		h.logger.WithError(err).Error("Failed to get dynamic client for custom resource events")
+		h.sseHandler.SendSSEError(c, http.StatusBadRequest, err.Error())
+		h.tracingHelper.RecordError(clientSpan, err, "Failed to get dynamic client")
+		clientSpan.End()
+		h.tracingHelper.RecordError(span, err, "GetCustomResourceEvents failed")
+		return
+	}
+	h.tracingHelper.RecordSuccess(clientSpan, "Clients acquired")
+	clientSpan.End()
+
+	// Child span for Kubernetes API operations
+	apiCtx, apiSpan := h.tracingHelper.StartKubernetesAPISpan(clientCtx, "custom_resource.get_api_call", "get", "custom_resource")
 	gvr := schema.GroupVersionResource{Group: group, Version: version, Resource: resource}
 
 	// Fetch the CR to determine its Kind for event filtering
-	obj, err2 := dynamicClient.Resource(gvr).Namespace(namespace).Get(c.Request.Context(), name, metav1.GetOptions{})
+	obj, err2 := dynamicClient.Resource(gvr).Namespace(namespace).Get(apiCtx, name, metav1.GetOptions{})
 	if err2 != nil {
 		h.sseHandler.SendSSEError(c, http.StatusNotFound, err2.Error())
+		h.tracingHelper.RecordError(apiSpan, err2, "Failed to get custom resource")
+		apiSpan.End()
+		h.tracingHelper.RecordError(span, err2, "GetCustomResourceEvents failed")
 		return
 	}
+	h.tracingHelper.RecordSuccess(apiSpan, "Custom resource get API call completed")
+	apiSpan.End()
 
+	// Child span for data processing
+	_, processingSpan := h.tracingHelper.StartDataProcessingSpan(apiCtx, "custom_resource.kind_extraction")
 	u := obj
 	kind := u.GetKind()
 	if kind == "" {
@@ -405,25 +578,22 @@ func (h *CustomResourcesHandler) GetCustomResourceEvents(c *gin.Context) {
 			kind = k
 		}
 	}
+	h.tracingHelper.RecordSuccess(processingSpan, "Kind extraction completed")
+	processingSpan.End()
 
+	// Child span for events retrieval
+	_, eventsSpan := h.tracingHelper.StartKubernetesAPISpan(apiCtx, "custom_resource.get_events", "list", "events")
 	h.eventsHandler.GetResourceEventsWithNamespace(c, client, kind, name, namespace, h.sseHandler.SendSSEResponse)
+	h.tracingHelper.RecordSuccess(eventsSpan, "Events retrieval completed")
+	eventsSpan.End()
+	h.tracingHelper.RecordSuccess(span, "Custom resource events operation completed")
 }
 
 // GetCustomResourceEventsByName returns events for a specific custom resource (cluster-scoped path, optional namespace via query)
 func (h *CustomResourcesHandler) GetCustomResourceEventsByName(c *gin.Context) {
-	client, err := h.getClientAndConfig(c)
-	if err != nil {
-		h.logger.WithError(err).Error("Failed to get client for custom resource events")
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	dynamicClient, err := h.getDynamicClient(c)
-	if err != nil {
-		h.logger.WithError(err).Error("Failed to get dynamic client for custom resource events")
-		h.sseHandler.SendSSEError(c, http.StatusBadRequest, err.Error())
-		return
-	}
+	// Start main span for custom resource events by name operation
+	ctx, span := h.tracingHelper.StartAuthSpan(c.Request.Context(), "custom_resource.get_events_by_name")
+	defer span.End()
 
 	group := c.Query("group")
 	version := c.Query("version")
@@ -431,26 +601,64 @@ func (h *CustomResourcesHandler) GetCustomResourceEventsByName(c *gin.Context) {
 	namespace := c.Query("namespace")
 	name := c.Param("name")
 
+	// Add resource attributes
+	h.tracingHelper.AddResourceAttributes(span, resource, "custom_resource", 1)
+
 	if group == "" || version == "" || resource == "" {
-		h.sseHandler.SendSSEError(c, http.StatusBadRequest, "group, version, and resource parameters are required")
+		err := fmt.Errorf("group, version, and resource parameters are required")
+		h.sseHandler.SendSSEError(c, http.StatusBadRequest, err.Error())
+		h.tracingHelper.RecordError(span, err, "GetCustomResourceEventsByName failed")
 		return
 	}
 
+	// Child span for client acquisition
+	clientCtx, clientSpan := h.tracingHelper.StartAuthSpan(ctx, "custom_resource.client_acquisition")
+	client, err := h.getClientAndConfig(c)
+	if err != nil {
+		h.logger.WithError(err).Error("Failed to get client for custom resource events")
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		h.tracingHelper.RecordError(clientSpan, err, "Failed to get client")
+		clientSpan.End()
+		h.tracingHelper.RecordError(span, err, "GetCustomResourceEventsByName failed")
+		return
+	}
+
+	dynamicClient, err := h.getDynamicClient(c)
+	if err != nil {
+		h.logger.WithError(err).Error("Failed to get dynamic client for custom resource events")
+		h.sseHandler.SendSSEError(c, http.StatusBadRequest, err.Error())
+		h.tracingHelper.RecordError(clientSpan, err, "Failed to get dynamic client")
+		clientSpan.End()
+		h.tracingHelper.RecordError(span, err, "GetCustomResourceEventsByName failed")
+		return
+	}
+	h.tracingHelper.RecordSuccess(clientSpan, "Clients acquired")
+	clientSpan.End()
+
+	// Child span for Kubernetes API operations
+	apiCtx, apiSpan := h.tracingHelper.StartKubernetesAPISpan(clientCtx, "custom_resource.get_api_call", "get", "custom_resource")
 	gvr := schema.GroupVersionResource{Group: group, Version: version, Resource: resource}
 
 	// Fetch the CR to determine its Kind for event filtering
 	var obj interface{}
 	var err2 error
 	if namespace != "" {
-		obj, err2 = dynamicClient.Resource(gvr).Namespace(namespace).Get(c.Request.Context(), name, metav1.GetOptions{})
+		obj, err2 = dynamicClient.Resource(gvr).Namespace(namespace).Get(apiCtx, name, metav1.GetOptions{})
 	} else {
-		obj, err2 = dynamicClient.Resource(gvr).Get(c.Request.Context(), name, metav1.GetOptions{})
+		obj, err2 = dynamicClient.Resource(gvr).Get(apiCtx, name, metav1.GetOptions{})
 	}
 	if err2 != nil {
 		h.sseHandler.SendSSEError(c, http.StatusNotFound, err2.Error())
+		h.tracingHelper.RecordError(apiSpan, err2, "Failed to get custom resource")
+		apiSpan.End()
+		h.tracingHelper.RecordError(span, err2, "GetCustomResourceEventsByName failed")
 		return
 	}
+	h.tracingHelper.RecordSuccess(apiSpan, "Custom resource get API call completed")
+	apiSpan.End()
 
+	// Child span for data processing
+	_, processingSpan := h.tracingHelper.StartDataProcessingSpan(apiCtx, "custom_resource.kind_extraction")
 	var kind string
 	if u, ok := obj.(*unstructured.Unstructured); ok {
 		kind = u.GetKind()
@@ -460,11 +668,19 @@ func (h *CustomResourcesHandler) GetCustomResourceEventsByName(c *gin.Context) {
 			}
 		}
 	}
+	h.tracingHelper.RecordSuccess(processingSpan, "Kind extraction completed")
+	processingSpan.End()
+
+	// Child span for events retrieval
+	_, eventsSpan := h.tracingHelper.StartKubernetesAPISpan(apiCtx, "custom_resource.get_events", "list", "events")
 	if namespace != "" {
 		h.eventsHandler.GetResourceEventsWithNamespace(c, client, kind, name, namespace, h.sseHandler.SendSSEResponse)
 	} else {
 		h.eventsHandler.GetResourceEvents(c, client, kind, name, h.sseHandler.SendSSEResponse)
 	}
+	h.tracingHelper.RecordSuccess(eventsSpan, "Events retrieval completed")
+	eventsSpan.End()
+	h.tracingHelper.RecordSuccess(span, "Custom resource events by name operation completed")
 }
 
 // getAdditionalPrinterColumns fetches additional printer columns for a CRD

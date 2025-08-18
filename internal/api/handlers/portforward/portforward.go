@@ -14,6 +14,7 @@ import (
 
 	"github.com/Facets-cloud/kube-dash/internal/k8s"
 	"github.com/Facets-cloud/kube-dash/internal/storage"
+	"github.com/Facets-cloud/kube-dash/internal/tracing"
 	"github.com/Facets-cloud/kube-dash/pkg/logger"
 
 	"github.com/gin-gonic/gin"
@@ -156,6 +157,7 @@ type PortForwardHandler struct {
 	upgrader      websocket.Upgrader
 	sessions      map[string]*PortForwardSession
 	sessionsMutex sync.RWMutex
+	tracingHelper *tracing.TracingHelper
 }
 
 // NewPortForwardHandler creates a new PortForwardHandler
@@ -169,7 +171,8 @@ func NewPortForwardHandler(store *storage.KubeConfigStore, clientFactory *k8s.Cl
 				return true // Allow all origins for now
 			},
 		},
-		sessions: make(map[string]*PortForwardSession),
+		sessions:      make(map[string]*PortForwardSession),
+		tracingHelper: tracing.GetTracingHelper(),
 	}
 
 	// Start inactivity monitor
@@ -257,16 +260,29 @@ func (h *PortForwardHandler) getClientAndConfig(c *gin.Context) (*kubernetes.Cli
 
 // HandlePortForward handles WebSocket-based port forward
 func (h *PortForwardHandler) HandlePortForward(c *gin.Context) {
+	// Start main span for port forward operation
+	ctx, span := h.tracingHelper.StartAuthSpan(c.Request.Context(), "portforward.websocket_connection")
+	defer span.End()
+
 	h.logger.Info("Port forward WebSocket request received")
 
+	// Child span for WebSocket connection setup
+	connCtx, connSpan := h.tracingHelper.StartKubernetesAPISpan(ctx, "connection_setup", "websocket", "")
 	// Upgrade HTTP connection to WebSocket
 	conn, err := h.upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		h.logger.WithError(err).Error("Failed to upgrade connection to WebSocket")
+		h.tracingHelper.RecordError(connSpan, err, "Failed to upgrade WebSocket connection")
+		connSpan.End()
+		h.tracingHelper.RecordError(span, err, "Port forward operation failed")
 		return
 	}
 	defer conn.Close()
+	h.tracingHelper.RecordSuccess(connSpan, "WebSocket connection established")
+	connSpan.End()
 
+	// Child span for parameter validation
+	validationCtx, validationSpan := h.tracingHelper.StartKubernetesAPISpan(connCtx, "parameter_validation", "portforward", "")
 	// Get parameters
 	resourceType := c.Query("resourceType")
 	resourceName := c.Query("resourceName")
@@ -277,16 +293,27 @@ func (h *PortForwardHandler) HandlePortForward(c *gin.Context) {
 	configID := c.Query("config")
 	cluster := c.Query("cluster")
 
+	// Add resource attributes
+	h.tracingHelper.AddResourceAttributes(span, resourceName, resourceType, 1)
+
 	// Validate required parameters
 	if resourceType == "" || resourceName == "" || namespace == "" || remotePortStr == "" {
-		h.sendWebSocketError(conn, "resourceType, resourceName, namespace, and remotePort are required")
+		err := fmt.Errorf("resourceType, resourceName, namespace, and remotePort are required")
+		h.sendWebSocketError(conn, err.Error())
+		h.tracingHelper.RecordError(validationSpan, err, "Missing required parameters")
+		validationSpan.End()
+		h.tracingHelper.RecordError(span, err, "Port forward operation failed")
 		return
 	}
 
 	// Parse ports
 	remotePort, err := strconv.Atoi(remotePortStr)
 	if err != nil {
-		h.sendWebSocketError(conn, "invalid remotePort")
+		err := fmt.Errorf("invalid remotePort: %w", err)
+		h.sendWebSocketError(conn, err.Error())
+		h.tracingHelper.RecordError(validationSpan, err, "Invalid remote port")
+		validationSpan.End()
+		h.tracingHelper.RecordError(span, err, "Port forward operation failed")
 		return
 	}
 
@@ -294,7 +321,11 @@ func (h *PortForwardHandler) HandlePortForward(c *gin.Context) {
 	if localPortStr != "" {
 		localPort, err = strconv.Atoi(localPortStr)
 		if err != nil {
-			h.sendWebSocketError(conn, "invalid localPort")
+			err := fmt.Errorf("invalid localPort: %w", err)
+			h.sendWebSocketError(conn, err.Error())
+			h.tracingHelper.RecordError(validationSpan, err, "Invalid local port")
+			validationSpan.End()
+			h.tracingHelper.RecordError(span, err, "Port forward operation failed")
 			return
 		}
 	}
@@ -303,14 +334,23 @@ func (h *PortForwardHandler) HandlePortForward(c *gin.Context) {
 	if protocol == "" {
 		protocol = "TCP"
 	}
+	h.tracingHelper.RecordSuccess(validationSpan, "Parameter validation completed")
+	validationSpan.End()
 
+	// Child span for client acquisition
+	clientCtx, clientSpan := h.tracingHelper.StartKubernetesAPISpan(validationCtx, "client_acquisition", "kubernetes", namespace)
 	// Get Kubernetes client and config
 	client, restConfig, err := h.getClientAndConfig(c)
 	if err != nil {
 		h.logger.WithError(err).Error("Failed to get Kubernetes client for port forward")
 		h.sendWebSocketError(conn, err.Error())
+		h.tracingHelper.RecordError(clientSpan, err, "Failed to acquire Kubernetes client")
+		clientSpan.End()
+		h.tracingHelper.RecordError(span, err, "Port forward operation failed")
 		return
 	}
+	h.tracingHelper.RecordSuccess(clientSpan, "Kubernetes client acquired")
+	clientSpan.End()
 
 	// Create port forward session
 	session := &PortForwardSession{
@@ -349,6 +389,8 @@ func (h *PortForwardHandler) HandlePortForward(c *gin.Context) {
 		"session": session.ToJSON(),
 	})
 
+	// Child span for port forwarding operations
+	forwardCtx, forwardSpan := h.tracingHelper.StartKubernetesAPISpan(clientCtx, "portforward_operation", resourceType, namespace)
 	// Start port forward based on resource type
 	switch resourceType {
 	case "pod":
@@ -362,8 +404,21 @@ func (h *PortForwardHandler) HandlePortForward(c *gin.Context) {
 	if err != nil {
 		h.logger.WithError(err).Error("Failed to start port forward")
 		h.sendWebSocketError(conn, fmt.Sprintf("Failed to start port forward: %v", err))
+		h.tracingHelper.RecordError(forwardSpan, err, "Port forward operation failed")
+		forwardSpan.End()
+		h.tracingHelper.RecordError(span, err, "Port forward operation failed")
 		return
 	}
+	h.tracingHelper.RecordSuccess(forwardSpan, "Port forwarding started successfully")
+	forwardSpan.End()
+
+	// Child span for connection management
+	_, managementSpan := h.tracingHelper.StartKubernetesAPISpan(forwardCtx, "connection_management", "portforward", namespace)
+	defer func() {
+		h.tracingHelper.RecordSuccess(managementSpan, "Connection management completed")
+		managementSpan.End()
+		h.tracingHelper.RecordSuccess(span, "Port forward operation completed")
+	}()
 
 	// Keep connection alive and handle messages
 	heartbeatTicker := time.NewTicker(30 * time.Second)
@@ -569,6 +624,12 @@ func (h *PortForwardHandler) startServicePortForward(session *PortForwardSession
 
 // GetActiveSessions returns all active port forward sessions
 func (h *PortForwardHandler) GetActiveSessions(c *gin.Context) {
+	// Start main span for get active sessions operation
+	ctx, span := h.tracingHelper.StartAuthSpan(c.Request.Context(), "portforward.get_active_sessions")
+	defer span.End()
+
+	// Child span for data processing
+	_, dataSpan := h.tracingHelper.StartDataProcessingSpan(ctx, "portforward.process_sessions")
 	h.sessionsMutex.RLock()
 	defer h.sessionsMutex.RUnlock()
 
@@ -578,26 +639,46 @@ func (h *PortForwardHandler) GetActiveSessions(c *gin.Context) {
 		sessionCopy := session.ToJSON()
 		sessions = append(sessions, sessionCopy)
 	}
+	h.tracingHelper.RecordSuccess(dataSpan, "Sessions processed successfully")
+	dataSpan.End()
 
 	c.JSON(http.StatusOK, gin.H{
 		"sessions": sessions,
 		"count":    len(sessions),
 	})
+	h.tracingHelper.RecordSuccess(span, "Get active sessions operation completed")
 }
 
 // StopSession stops a specific port forward session
 func (h *PortForwardHandler) StopSession(c *gin.Context) {
+	// Start main span for stop session operation
+	ctx, span := h.tracingHelper.StartAuthSpan(c.Request.Context(), "portforward.stop_session")
+	defer span.End()
+
 	sessionID := c.Param("id")
 
+	// Add resource attributes
+	h.tracingHelper.AddResourceAttributes(span, sessionID, "portforward_session", 1)
+
+	// Child span for session lookup
+	_, lookupSpan := h.tracingHelper.StartDataProcessingSpan(ctx, "portforward.session_lookup")
 	h.sessionsMutex.Lock()
 	session, exists := h.sessions[sessionID]
 	h.sessionsMutex.Unlock()
 
 	if !exists {
+		err := fmt.Errorf("session not found: %s", sessionID)
 		c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
+		h.tracingHelper.RecordError(lookupSpan, err, "Session not found")
+		lookupSpan.End()
+		h.tracingHelper.RecordError(span, err, "Stop session operation failed")
 		return
 	}
+	h.tracingHelper.RecordSuccess(lookupSpan, "Session found successfully")
+	lookupSpan.End()
 
+	// Child span for session termination
+	_, terminationSpan := h.tracingHelper.StartKubernetesAPISpan(ctx, "session_termination", "portforward", "")
 	// Stop the session
 	close(session.StopChan)
 
@@ -605,8 +686,11 @@ func (h *PortForwardHandler) StopSession(c *gin.Context) {
 	h.sessionsMutex.Lock()
 	delete(h.sessions, sessionID)
 	h.sessionsMutex.Unlock()
+	h.tracingHelper.RecordSuccess(terminationSpan, "Session terminated successfully")
+	terminationSpan.End()
 
 	c.JSON(http.StatusOK, gin.H{"message": "session stopped successfully"})
+	h.tracingHelper.RecordSuccess(span, "Stop session operation completed")
 }
 
 // sendWebSocketMessage sends a message through the WebSocket

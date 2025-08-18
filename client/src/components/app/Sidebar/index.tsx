@@ -1,7 +1,7 @@
 import './index.css';
 
-import { API_VERSION, CUSTOM_RESOURCES_ENDPOINT, NAVIGATION_ROUTE } from "@/constants";
-import { ChevronRight, DatabaseIcon, LayersIcon, LayoutGridIcon, NetworkIcon, ShieldHalf, SlidersHorizontalIcon, UngroupIcon, Terminal } from "lucide-react";
+import { API_VERSION, CUSTOM_RESOURCES_ENDPOINT, getFilteredNavigationRoutes } from "@/constants";
+import { ChevronRight, DatabaseIcon, LayersIcon, LayoutGridIcon, NetworkIcon, ShieldHalf, SlidersHorizontalIcon, UngroupIcon, Terminal, Activity } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { SidebarContent, SidebarGroup, SidebarGroupLabel, Sidebar as SidebarMainComponent, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarMenuSub, SidebarMenuSubButton, SidebarMenuSubItem, SidebarRail, useSidebar } from "@/components/ui/sidebar";
@@ -9,6 +9,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { getSystemTheme } from "@/utils";
 import { memo, useEffect, useState } from "react";
 import { useAppDispatch, useAppSelector } from "@/redux/hooks";
+import { useRuntimeFeatureFlags } from "@/hooks/useRuntimeFeatureFlags";
 import { useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
 
 import { SidebarNavigator } from "./Navigator";
@@ -47,6 +48,15 @@ const Sidebar = memo(function ({ className }: SidebarProps) {
   } = useAppSelector((state) => state.customResources);
   const { open, isMobile, openMobile } = useSidebar();
   const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({});
+  const { featureFlags, isLoading: featureFlagsLoading } = useRuntimeFeatureFlags();
+  const [navigationRoutes, setNavigationRoutes] = useState(() => getFilteredNavigationRoutes());
+
+  // Update navigation routes when feature flags change
+  useEffect(() => {
+    if (!featureFlagsLoading) {
+      setNavigationRoutes(getFilteredNavigationRoutes());
+    }
+  }, [featureFlags, featureFlagsLoading]);
 
   useEffect(() => {
     const currentRoute = new URL(location.href).searchParams.get('resourcekind') || '';
@@ -59,8 +69,8 @@ const Sidebar = memo(function ({ className }: SidebarProps) {
       }
     }
     else if (currentRoute.toLowerCase() !== 'customresourcedefinitions') {
-      Object.keys(NAVIGATION_ROUTE).forEach((category) => {
-        if (NAVIGATION_ROUTE[category].some(({ route }) => route === currentRoute)) {
+      Object.keys(navigationRoutes).forEach((category) => {
+        if (navigationRoutes[category].some(({ route }) => route === currentRoute)) {
           setOpenMenus(() => ({
             [category]: true,
           }));
@@ -110,6 +120,10 @@ const Sidebar = memo(function ({ className }: SidebarProps) {
       navigate({ to: `/${configName}/settings?cluster=${encodeURIComponent(clusterName)}` });
     } else if (routeValue === 'overview') {
       navigate({ to: `/${configName}/overview?cluster=${encodeURIComponent(clusterName)}` });
+    } else if (routeValue === 'tools/tracing') {
+      navigate({ to: `/${configName}/tools/tracing?cluster=${encodeURIComponent(clusterName)}` });
+    } else if (routeValue === 'tools/tracing/settings') {
+      navigate({ to: `/${configName}/tools/tracing/settings?cluster=${encodeURIComponent(clusterName)}` });
     } else {
       navigate({ to: `/${configName}/list?cluster=${encodeURIComponent(clusterName)}&resourcekind=${routeValue}` });
     }
@@ -155,6 +169,8 @@ const Sidebar = memo(function ({ className }: SidebarProps) {
         return <img src={helmLogo} alt="Helm" width={16} height={16} />;
       case 'tools':
         return <Terminal width={16} />;
+      case 'tracing':
+        return <Activity width={16} />;
       case 'preferences':
         return <SlidersHorizontalIcon width={16} />;
       default:
@@ -166,6 +182,10 @@ const Sidebar = memo(function ({ className }: SidebarProps) {
     // For overview route, check if current pathname contains '/overview'
     if (route === 'overview') {
       return router.location.pathname.includes('/overview');
+    }
+    // For tracing routes, check if current pathname contains the route
+    if (route === 'tools/tracing') {
+      return router.location.pathname.includes(`/${route}`);
     }
     // For other routes, check resourcekind parameter
     return route === (!check ? queryParams.get('kind') : queryParams.get('resourcekind'));
@@ -198,7 +218,7 @@ const Sidebar = memo(function ({ className }: SidebarProps) {
                     </SidebarMenuItem>
                     
                     {
-                      Object.keys(NAVIGATION_ROUTE).map((route) => (
+                      Object.keys(navigationRoutes).map((route) => (
                         <Collapsible
                           key={route}
                           asChild
@@ -219,7 +239,7 @@ const Sidebar = memo(function ({ className }: SidebarProps) {
                               <CollapsibleContent>
                                 <SidebarMenuSub>
                                   {
-                                    NAVIGATION_ROUTE[route].map(({ name, route: routeValue }) => {
+                                    navigationRoutes[route].map(({ name, route: routeValue }) => {
                                       return (
                                         <SidebarMenuSubItem key={routeValue} className="cursor-pointer">
                                           <TooltipProvider delayDuration={0}>
@@ -254,7 +274,7 @@ const Sidebar = memo(function ({ className }: SidebarProps) {
                                   <DropdownMenuSeparator />
                                   <DropdownMenuGroup className='overflow-auto max-h-64'>
                                     {
-                                      NAVIGATION_ROUTE[route].map(({ name, route: routeValue }) => {
+                                      navigationRoutes[route].map(({ name, route: routeValue }) => {
                                         return (
                                           <DropdownMenuItem
                                             key={routeValue}

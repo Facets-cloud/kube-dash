@@ -13,6 +13,7 @@ import (
 	"github.com/Facets-cloud/kube-dash/internal/api/utils"
 	"github.com/Facets-cloud/kube-dash/internal/k8s"
 	"github.com/Facets-cloud/kube-dash/internal/storage"
+	"github.com/Facets-cloud/kube-dash/internal/tracing"
 	"github.com/Facets-cloud/kube-dash/pkg/logger"
 
 	"github.com/gin-gonic/gin"
@@ -33,6 +34,7 @@ type PrometheusHandler struct {
 	clientFactory *k8s.ClientFactory
 	logger        *logger.Logger
 	sseHandler    *utils.SSEHandler
+	tracingHelper *tracing.TracingHelper
 
 	// Cache for metrics operations
 	cache    map[string]CacheEntry
@@ -47,6 +49,7 @@ func NewPrometheusHandler(store *storage.KubeConfigStore, clientFactory *k8s.Cli
 		clientFactory: clientFactory,
 		logger:        log,
 		sseHandler:    utils.NewSSEHandler(log),
+		tracingHelper: tracing.GetTracingHelper(),
 		cache:         make(map[string]CacheEntry),
 		cacheTTL:      5 * time.Minute, // 5 minute cache TTL for metrics
 	}
@@ -501,23 +504,36 @@ func strconvParseFloat(s string) (float64, error) { return json.Number(s).Float6
 
 // GetPodMetricsSSE streams Prometheus-based pod metrics as SSE
 func (h *PrometheusHandler) GetPodMetricsSSE(c *gin.Context) {
+	// Start child span for client setup
+	ctx, clientSpan := h.tracingHelper.StartAuthSpan(c.Request.Context(), "get-client-config")
+	defer clientSpan.End()
+
 	client, err := h.getClient(c)
 	if err != nil {
+		h.tracingHelper.RecordError(clientSpan, err, "Failed to get Kubernetes client")
 		h.sseHandler.SendSSEError(c, http.StatusBadRequest, err.Error())
 		return
 	}
+	h.tracingHelper.RecordSuccess(clientSpan, "Successfully obtained Kubernetes client")
+
 	namespace := c.Param("namespace")
 	name := c.Param("name")
 	rng := c.DefaultQuery("range", "15m")
 	step := c.DefaultQuery("step", "15s")
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 4*time.Second)
+	// Start child span for Prometheus discovery
+	discoveryCtx, discoverySpan := h.tracingHelper.StartKubernetesAPISpan(ctx, "discover", "prometheus", "")
+	defer discoverySpan.End()
+
+	timeoutCtx, cancel := context.WithTimeout(discoveryCtx, 4*time.Second)
 	defer cancel()
-	target, err := h.discoverPrometheus(ctx, client)
+	target, err := h.discoverPrometheus(timeoutCtx, client)
 	if err != nil {
+		h.tracingHelper.RecordError(discoverySpan, err, "Failed to discover Prometheus")
 		h.sseHandler.SendSSEError(c, http.StatusNotFound, "prometheus not available")
 		return
 	}
+	h.tracingHelper.RecordSuccess(discoverySpan, "Successfully discovered Prometheus target")
 
 	// Build queries
 	// CPU mcores
@@ -529,6 +545,10 @@ func (h *PrometheusHandler) GetPodMetricsSSE(c *gin.Context) {
 	qTX := fmt.Sprintf("sum by (namespace,pod) (rate(container_network_transmit_bytes_total{namespace=\"%s\",pod=\"%s\"}[5m]))", escapeLabelValue(namespace), escapeLabelValue(name))
 
 	fetch := func() (interface{}, error) {
+		// Start child span for metrics query execution
+		queryCtx, querySpan := h.tracingHelper.StartMetricsSpan(ctx, "execute-prometheus-queries")
+		defer querySpan.End()
+
 		now := time.Now()
 		start := now.Add(-parsePromRange(rng))
 		params := map[string]string{
@@ -537,30 +557,49 @@ func (h *PrometheusHandler) GetPodMetricsSSE(c *gin.Context) {
 			"end":   fmt.Sprintf("%d", now.Unix()),
 			"step":  step,
 		}
-		cpuRaw, err := h.proxyPrometheus(c.Request.Context(), client, target, "/api/v1/query_range", params)
+
+		// CPU Query
+		_, cpuQuerySpan := h.tracingHelper.StartMetricsSpan(queryCtx, "query-cpu-metrics")
+		cpuRaw, err := h.proxyPrometheus(queryCtx, client, target, "/api/v1/query_range", params)
 		if err != nil {
+			h.tracingHelper.RecordError(cpuQuerySpan, err, "CPU metrics query failed")
+			cpuQuerySpan.End()
 			return nil, err
 		}
+		h.tracingHelper.RecordSuccess(cpuQuerySpan, "CPU metrics query completed")
+		cpuQuerySpan.End()
 		cpuSeries, _ := parseMatrix(cpuRaw)
 
-		// MEM
+		// MEM Query
+		_, memQuerySpan := h.tracingHelper.StartMetricsSpan(queryCtx, "query-memory-metrics")
 		params["query"] = qMEM
-		memRaw, err := h.proxyPrometheus(c.Request.Context(), client, target, "/api/v1/query_range", params)
+		memRaw, err := h.proxyPrometheus(queryCtx, client, target, "/api/v1/query_range", params)
 		if err != nil {
+			h.tracingHelper.RecordError(memQuerySpan, err, "Memory metrics query failed")
+			memQuerySpan.End()
 			return nil, err
 		}
+		h.tracingHelper.RecordSuccess(memQuerySpan, "Memory metrics query completed")
+		memQuerySpan.End()
 		memSeries, _ := parseMatrix(memRaw)
 
-		// RX
+		// RX Query
+		_, rxQuerySpan := h.tracingHelper.StartMetricsSpan(queryCtx, "query-network-rx-metrics")
 		params["query"] = qRX
-		rxRaw, _ := h.proxyPrometheus(c.Request.Context(), client, target, "/api/v1/query_range", params)
+		rxRaw, _ := h.proxyPrometheus(queryCtx, client, target, "/api/v1/query_range", params)
+		h.tracingHelper.RecordSuccess(rxQuerySpan, "Network RX metrics query completed")
+		rxQuerySpan.End()
 		rxSeries, _ := parseMatrix(rxRaw)
 
-		// TX
+		// TX Query
+		_, txQuerySpan := h.tracingHelper.StartMetricsSpan(queryCtx, "query-network-tx-metrics")
 		params["query"] = qTX
-		txRaw, _ := h.proxyPrometheus(c.Request.Context(), client, target, "/api/v1/query_range", params)
+		txRaw, _ := h.proxyPrometheus(queryCtx, client, target, "/api/v1/query_range", params)
+		h.tracingHelper.RecordSuccess(txQuerySpan, "Network TX metrics query completed")
+		txQuerySpan.End()
 		txSeries, _ := parseMatrix(txRaw)
 
+		h.tracingHelper.RecordSuccess(querySpan, "All Prometheus queries completed successfully")
 		payload := gin.H{
 			"series": append(append(cpuSeries, memSeries...), append(rxSeries, txSeries...)...),
 		}
@@ -577,11 +616,18 @@ func (h *PrometheusHandler) GetPodMetricsSSE(c *gin.Context) {
 
 // GetPodEnhancedMetricsSSE streams enhanced Prometheus-based pod metrics with CPU average/maximum and memory usage
 func (h *PrometheusHandler) GetPodEnhancedMetricsSSE(c *gin.Context) {
+	// Start child span for client setup
+	ctx, clientSpan := h.tracingHelper.StartAuthSpan(c.Request.Context(), "get-client-config")
+	defer clientSpan.End()
+
 	client, err := h.getClient(c)
 	if err != nil {
+		h.tracingHelper.RecordError(clientSpan, err, "Failed to get Kubernetes client")
 		h.sseHandler.SendSSEError(c, http.StatusBadRequest, err.Error())
 		return
 	}
+	h.tracingHelper.RecordSuccess(clientSpan, "Successfully obtained Kubernetes client")
+
 	namespace := c.Param("namespace")
 	name := c.Param("name")
 	rng := c.DefaultQuery("range", "15m")
@@ -596,18 +642,31 @@ func (h *PrometheusHandler) GetPodEnhancedMetricsSSE(c *gin.Context) {
 		timeoutDuration = 10 * time.Second
 	}
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), timeoutDuration)
+	// Start child span for Prometheus discovery
+	discoveryCtx, discoverySpan := h.tracingHelper.StartKubernetesAPISpan(ctx, "discover", "prometheus", "")
+	defer discoverySpan.End()
+
+	timeoutCtx, cancel := context.WithTimeout(discoveryCtx, timeoutDuration)
 	defer cancel()
-	target, err := h.discoverPrometheus(ctx, client)
+	target, err := h.discoverPrometheus(timeoutCtx, client)
 	if err != nil {
+		h.tracingHelper.RecordError(discoverySpan, err, "Failed to discover Prometheus")
 		h.sseHandler.SendSSEError(c, http.StatusNotFound, "prometheus not available")
 		return
 	}
+	h.tracingHelper.RecordSuccess(discoverySpan, "Successfully discovered Prometheus target")
+
+	// Start child span for pod resource fetching
+	resourceCtx, resourceSpan := h.tracingHelper.StartKubernetesAPISpan(ctx, "get", "pod", namespace)
+	defer resourceSpan.End()
 
 	// Get pod resource limits and requests from Kubernetes API
-	pod, err := client.CoreV1().Pods(namespace).Get(ctx, name, metav1.GetOptions{})
+	pod, err := client.CoreV1().Pods(namespace).Get(resourceCtx, name, metav1.GetOptions{})
 	if err != nil {
 		h.logger.Error("Failed to get pod details", "error", err, "namespace", namespace, "name", name)
+		h.tracingHelper.RecordError(resourceSpan, err, "Failed to get pod resource details")
+	} else {
+		h.tracingHelper.RecordSuccess(resourceSpan, "Successfully retrieved pod resource details")
 	}
 
 	// Extract resource limits and requests
@@ -642,6 +701,10 @@ func (h *PrometheusHandler) GetPodEnhancedMetricsSSE(c *gin.Context) {
 	qMemUsage := fmt.Sprintf(`sum(container_memory_usage_bytes{namespace=~"%s",endpoint="https-metrics",pod=~"%s",image!="",container!="POD"})`, escapeLabelValue(namespace), escapeLabelValue(name))
 
 	fetch := func() (interface{}, error) {
+		// Start child span for enhanced metrics query execution
+		queryCtx, querySpan := h.tracingHelper.StartMetricsSpan(ctx, "execute-enhanced-prometheus-queries")
+		defer querySpan.End()
+
 		now := time.Now()
 		rangeDuration := parsePromRange(rng)
 		start := now.Add(-rangeDuration)
@@ -660,14 +723,19 @@ func (h *PrometheusHandler) GetPodEnhancedMetricsSSE(c *gin.Context) {
 			"step", step,
 			"timeout", timeoutDuration.String())
 
-		// CPU Average
+		// CPU Average Query
+		_, cpuAvgQuerySpan := h.tracingHelper.StartMetricsSpan(queryCtx, "query-cpu-average-metrics")
 		params["query"] = qCPUAvg
 		h.logger.Info("Executing CPU Average query", "query", qCPUAvg, "params", params)
-		cpuAvgRaw, err := h.proxyPrometheus(c.Request.Context(), client, target, "/api/v1/query_range", params)
+		cpuAvgRaw, err := h.proxyPrometheus(queryCtx, client, target, "/api/v1/query_range", params)
 		if err != nil {
 			h.logger.Error("CPU Average query failed", "error", err, "query", qCPUAvg)
+			h.tracingHelper.RecordError(cpuAvgQuerySpan, err, "CPU Average metrics query failed")
+			cpuAvgQuerySpan.End()
 			return nil, err
 		}
+		h.tracingHelper.RecordSuccess(cpuAvgQuerySpan, "CPU Average metrics query completed")
+		cpuAvgQuerySpan.End()
 		cpuAvgSeries, _ := parseMatrix(cpuAvgRaw)
 		for i := range cpuAvgSeries {
 			cpuAvgSeries[i].Metric = "cpu_average"
@@ -685,26 +753,36 @@ func (h *PrometheusHandler) GetPodEnhancedMetricsSSE(c *gin.Context) {
 				"lastDataPoint", time.Unix(int64(lastPoint.T), 0).Format("2006-01-02 15:04:05"))
 		}
 
-		// CPU Maximum
+		// CPU Maximum Query
+		_, cpuMaxQuerySpan := h.tracingHelper.StartMetricsSpan(queryCtx, "query-cpu-maximum-metrics")
 		params["query"] = qCPUMax
-		cpuMaxRaw, err := h.proxyPrometheus(c.Request.Context(), client, target, "/api/v1/query_range", params)
+		cpuMaxRaw, err := h.proxyPrometheus(queryCtx, client, target, "/api/v1/query_range", params)
 		if err != nil {
 			h.logger.Error("CPU Maximum query failed", "error", err, "query", qCPUMax)
+			h.tracingHelper.RecordError(cpuMaxQuerySpan, err, "CPU Maximum metrics query failed")
+			cpuMaxQuerySpan.End()
 			return nil, err
 		}
+		h.tracingHelper.RecordSuccess(cpuMaxQuerySpan, "CPU Maximum metrics query completed")
+		cpuMaxQuerySpan.End()
 		cpuMaxSeries, _ := parseMatrix(cpuMaxRaw)
 		for i := range cpuMaxSeries {
 			cpuMaxSeries[i].Metric = "cpu_maximum"
 		}
 
-		// Memory Usage
+		// Memory Usage Query
+		_, memUsageQuerySpan := h.tracingHelper.StartMetricsSpan(queryCtx, "query-memory-usage-metrics")
 		params["query"] = qMemUsage
 		h.logger.Info("Executing Memory Usage query", "query", qMemUsage, "params", params)
-		memUsageRaw, err := h.proxyPrometheus(c.Request.Context(), client, target, "/api/v1/query_range", params)
+		memUsageRaw, err := h.proxyPrometheus(queryCtx, client, target, "/api/v1/query_range", params)
 		if err != nil {
 			h.logger.Error("Memory Usage query failed", "error", err, "query", qMemUsage)
+			h.tracingHelper.RecordError(memUsageQuerySpan, err, "Memory Usage metrics query failed")
+			memUsageQuerySpan.End()
 			return nil, err
 		}
+		h.tracingHelper.RecordSuccess(memUsageQuerySpan, "Memory Usage metrics query completed")
+		memUsageQuerySpan.End()
 		memUsageSeries, _ := parseMatrix(memUsageRaw)
 		for i := range memUsageSeries {
 			memUsageSeries[i].Metric = "memory_usage"

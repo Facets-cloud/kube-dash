@@ -12,6 +12,7 @@ import (
 	"github.com/Facets-cloud/kube-dash/internal/api/utils"
 	"github.com/Facets-cloud/kube-dash/internal/k8s"
 	"github.com/Facets-cloud/kube-dash/internal/storage"
+	"github.com/Facets-cloud/kube-dash/internal/tracing"
 	"github.com/Facets-cloud/kube-dash/pkg/logger"
 
 	"github.com/gin-gonic/gin"
@@ -57,6 +58,7 @@ type PodsHandler struct {
 	sseHandler    *utils.SSEHandler
 	yamlHandler   *utils.YAMLHandler
 	eventsHandler *utils.EventsHandler
+	tracingHelper *tracing.TracingHelper
 }
 
 // NewPodsHandler creates a new pods handler
@@ -68,11 +70,17 @@ func NewPodsHandler(store *storage.KubeConfigStore, clientFactory *k8s.ClientFac
 		sseHandler:    utils.NewSSEHandler(log),
 		yamlHandler:   utils.NewYAMLHandler(log),
 		eventsHandler: utils.NewEventsHandler(log),
+		tracingHelper: tracing.GetTracingHelper(),
 	}
 }
 
 // getClientAndConfig gets the Kubernetes client and config for the given config ID and cluster
 func (h *PodsHandler) getClientAndConfig(c *gin.Context) (*kubernetes.Clientset, error) {
+	return h.getClientAndConfigWithContext(c, c.Request.Context())
+}
+
+// getClientAndConfigWithContext gets the Kubernetes client and config with tracing context
+func (h *PodsHandler) getClientAndConfigWithContext(c *gin.Context, ctx context.Context) (*kubernetes.Clientset, error) {
 	configID := c.Query("config")
 	cluster := c.Query("cluster")
 
@@ -80,12 +88,20 @@ func (h *PodsHandler) getClientAndConfig(c *gin.Context) (*kubernetes.Clientset,
 		return nil, fmt.Errorf("config parameter is required")
 	}
 
+	// Start child span for config retrieval
+	_, configSpan := h.tracingHelper.StartDataProcessingSpan(ctx, "get-kubeconfig")
+	defer configSpan.End()
+
 	config, err := h.store.GetKubeConfig(configID)
 	if err != nil {
+		h.tracingHelper.RecordError(configSpan, err, "Failed to get kubeconfig")
 		return nil, fmt.Errorf("config not found: %w", err)
 	}
+	h.tracingHelper.AddResourceAttributes(configSpan, configID, "kubeconfig", 1)
+	h.tracingHelper.RecordSuccess(configSpan, fmt.Sprintf("Retrieved kubeconfig: %s", configID))
 
-	client, err := h.clientFactory.GetClientForConfig(config, cluster)
+	// Use context-aware client factory method
+	client, err := h.clientFactory.GetClientForConfigWithContext(ctx, config, cluster)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get Kubernetes client: %w", err)
 	}
@@ -123,12 +139,18 @@ func (h *PodsHandler) GetPods(c *gin.Context) {
 
 // GetPodsSSE returns pods as Server-Sent Events with real-time updates
 func (h *PodsHandler) GetPodsSSE(c *gin.Context) {
-	client, err := h.getClientAndConfig(c)
+	// Start child span for client setup with HTTP context
+	ctx, clientSpan := h.tracingHelper.StartAuthSpanWithHTTP(c, "setup-client-for-sse")
+	defer clientSpan.End()
+
+	client, err := h.getClientAndConfigWithContext(c, ctx)
 	if err != nil {
 		h.logger.WithError(err).Error("Failed to get client for pods SSE")
+		h.tracingHelper.RecordError(clientSpan, err, "Failed to get client for pods SSE")
 		h.sseHandler.SendSSEError(c, http.StatusBadRequest, err.Error())
 		return
 	}
+	h.tracingHelper.RecordSuccess(clientSpan, "Client setup completed for pods SSE")
 
 	namespace := c.Query("namespace")
 	node := c.Query("node")
@@ -145,56 +167,94 @@ func (h *PodsHandler) GetPodsSSE(c *gin.Context) {
 
 	// Function to fetch and transform pods data
 	fetchPods := func() (interface{}, error) {
+		// Start child span for owner resolution
+		fetchCtx, ownerSpan := h.tracingHelper.StartDataProcessingSpanWithHTTP(c, "resolve-owner-filters")
+		defer ownerSpan.End()
+
 		// Build list options with filters
 		listOptions := metav1.ListOptions{}
 
 		// If filtering by node, use field selector
 		if node != "" {
 			listOptions.FieldSelector = fmt.Sprintf("spec.nodeName=%s", node)
+			h.tracingHelper.AddResourceAttributes(ownerSpan, node, "node-filter", 1)
 		}
 
 		// If filtering by owner (deployment, daemonset, etc.), we need to get the owner first
 		if owner != "" && ownerName != "" && namespace != "" {
 			switch owner {
 			case "deployment":
-				deployment, err := client.AppsV1().Deployments(namespace).Get(c.Request.Context(), ownerName, metav1.GetOptions{})
+				_, deploySpan := h.tracingHelper.StartKubernetesAPISpan(fetchCtx, "get", "deployment", namespace)
+				deployment, err := client.AppsV1().Deployments(namespace).Get(fetchCtx, ownerName, metav1.GetOptions{})
 				if err == nil {
 					listOptions.LabelSelector = metav1.FormatLabelSelector(deployment.Spec.Selector)
+					h.tracingHelper.RecordSuccess(deploySpan, "Retrieved deployment selector")
+				} else {
+					h.tracingHelper.RecordError(deploySpan, err, "Failed to get deployment")
 				}
+				deploySpan.End()
 			case "daemonset":
-				daemonSet, err := client.AppsV1().DaemonSets(namespace).Get(c.Request.Context(), ownerName, metav1.GetOptions{})
+				_, dsSpan := h.tracingHelper.StartKubernetesAPISpan(fetchCtx, "get", "daemonset", namespace)
+				daemonSet, err := client.AppsV1().DaemonSets(namespace).Get(fetchCtx, ownerName, metav1.GetOptions{})
 				if err == nil {
 					listOptions.LabelSelector = metav1.FormatLabelSelector(daemonSet.Spec.Selector)
+					h.tracingHelper.RecordSuccess(dsSpan, "Retrieved daemonset selector")
+				} else {
+					h.tracingHelper.RecordError(dsSpan, err, "Failed to get daemonset")
 				}
+				dsSpan.End()
 			case "replicaset":
-				replicaSet, err := client.AppsV1().ReplicaSets(namespace).Get(c.Request.Context(), ownerName, metav1.GetOptions{})
+				_, rsSpan := h.tracingHelper.StartKubernetesAPISpan(fetchCtx, "get", "replicaset", namespace)
+				replicaSet, err := client.AppsV1().ReplicaSets(namespace).Get(fetchCtx, ownerName, metav1.GetOptions{})
 				if err == nil {
 					listOptions.LabelSelector = metav1.FormatLabelSelector(replicaSet.Spec.Selector)
+					h.tracingHelper.RecordSuccess(rsSpan, "Retrieved replicaset selector")
+				} else {
+					h.tracingHelper.RecordError(rsSpan, err, "Failed to get replicaset")
 				}
+				rsSpan.End()
 			}
 		}
+		h.tracingHelper.RecordSuccess(ownerSpan, "Owner filters resolved")
+
+		// Start child span for Kubernetes API call
+		_, k8sSpan := h.tracingHelper.StartKubernetesAPISpan(fetchCtx, "list", "pods", namespace)
+		defer k8sSpan.End()
 
 		var podList *v1.PodList
 		var err2 error
 
 		if namespace != "" {
-			podList, err2 = client.CoreV1().Pods(namespace).List(c.Request.Context(), listOptions)
+			podList, err2 = client.CoreV1().Pods(namespace).List(fetchCtx, listOptions)
 		} else {
-			podList, err2 = client.CoreV1().Pods("").List(c.Request.Context(), listOptions)
+			podList, err2 = client.CoreV1().Pods("").List(fetchCtx, listOptions)
 		}
 
 		if err2 != nil {
+			h.tracingHelper.RecordError(k8sSpan, err2, "Failed to list pods")
 			return nil, err2
 		}
+		h.tracingHelper.AddResourceAttributes(k8sSpan, "pods", "list", len(podList.Items))
+		h.tracingHelper.RecordSuccess(k8sSpan, fmt.Sprintf("Retrieved %d pods", len(podList.Items)))
+
+		// Start child span for data transformation
+		_, transformSpan := h.tracingHelper.StartDataProcessingSpan(fetchCtx, "transform-pods")
+		defer transformSpan.End()
 
 		// Transform pods to the expected format first (fast path)
 		var transformedPods []types.PodListResponse
 		for _, pod := range podList.Items {
 			transformedPods = append(transformedPods, transformers.TransformPodToResponse(&pod, configID, cluster))
 		}
+		h.tracingHelper.AddResourceAttributes(transformSpan, "pods", "transform", len(transformedPods))
+		h.tracingHelper.RecordSuccess(transformSpan, fmt.Sprintf("Transformed %d pods", len(transformedPods)))
 
 		// Best-effort metrics overlay: single List call with short timeout; do not block initial response
 		if mClient != nil {
+			// Start child span for metrics collection
+			_, metricsSpan := h.tracingHelper.StartMetricsSpan(fetchCtx, "collect-pod-metrics")
+			defer metricsSpan.End()
+
 			// Build a quick lookup for the current pods we have
 			podSet := make(map[string]struct{}, len(transformedPods))
 			for _, p := range transformedPods {
@@ -203,12 +263,12 @@ func (h *PodsHandler) GetPodsSSE(c *gin.Context) {
 			}
 
 			// Use short timeout so we never block
-			ctx, cancel := context.WithTimeout(c.Request.Context(), 800*time.Millisecond)
+			metricsCtx, cancel := context.WithTimeout(fetchCtx, 800*time.Millisecond)
 			defer cancel()
 
 			// Metrics API list per namespace or all namespaces
 			// Use empty selector to avoid metrics-server field selector limitations
-			metricsList, err := mClient.MetricsV1beta1().PodMetricses(namespace).List(ctx, metav1.ListOptions{})
+			metricsList, err := mClient.MetricsV1beta1().PodMetricses(namespace).List(metricsCtx, metav1.ListOptions{})
 			if err == nil {
 				// Aggregate metrics per pod
 				type agg struct {
@@ -233,14 +293,26 @@ func (h *PodsHandler) GetPodsSSE(c *gin.Context) {
 					}
 				}
 
+				// Start child span for metrics processing
+				_, processSpan := h.tracingHelper.StartDataProcessingSpan(metricsCtx, "process-metrics")
+				defer processSpan.End()
+
 				// Overlay into transformed list
+				metricsApplied := 0
 				for i := range transformedPods {
 					key := transformedPods[i].Namespace + "/" + transformedPods[i].BaseResponse.Name
 					if v, ok := metricsMap[key]; ok {
 						transformedPods[i].CPU = formatCPU(v.cpuMilli)
 						transformedPods[i].Memory = bytesToMiBString(v.memBytes)
+						metricsApplied++
 					}
 				}
+				h.tracingHelper.AddResourceAttributes(processSpan, "metrics", "overlay", metricsApplied)
+				h.tracingHelper.RecordSuccess(processSpan, fmt.Sprintf("Applied metrics to %d pods", metricsApplied))
+				h.tracingHelper.AddResourceAttributes(metricsSpan, "pod-metrics", "collect", len(metricsList.Items))
+				h.tracingHelper.RecordSuccess(metricsSpan, fmt.Sprintf("Collected metrics for %d pods", len(metricsList.Items)))
+			} else {
+				h.tracingHelper.RecordError(metricsSpan, err, "Failed to collect pod metrics")
 			}
 		}
 
@@ -304,22 +376,35 @@ func (h *PodsHandler) GetPodByName(c *gin.Context) {
 
 // GetPod returns a specific pod
 func (h *PodsHandler) GetPod(c *gin.Context) {
+	// Start child span for client setup
+	ctx, clientSpan := h.tracingHelper.StartAuthSpan(c.Request.Context(), "get-client-config")
+	defer clientSpan.End()
+
 	client, err := h.getClientAndConfig(c)
 	if err != nil {
 		h.logger.WithError(err).Error("Failed to get client for pod")
+		h.tracingHelper.RecordError(clientSpan, err, "Failed to get Kubernetes client")
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	h.tracingHelper.RecordSuccess(clientSpan, "Kubernetes client obtained")
 
 	name := c.Param("name")
 	namespace := c.Param("namespace")
 
-	pod, err := client.CoreV1().Pods(namespace).Get(c.Request.Context(), name, metav1.GetOptions{})
+	// Start child span for Kubernetes API call
+	_, k8sSpan := h.tracingHelper.StartKubernetesAPISpan(ctx, "get", "pod", namespace)
+	defer k8sSpan.End()
+
+	pod, err := client.CoreV1().Pods(namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		h.logger.WithError(err).WithField("pod", name).WithField("namespace", namespace).Error("Failed to get pod")
+		h.tracingHelper.RecordError(k8sSpan, err, "Failed to get pod")
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
+	h.tracingHelper.AddResourceAttributes(k8sSpan, name, "pod", 1)
+	h.tracingHelper.RecordSuccess(k8sSpan, fmt.Sprintf("Retrieved pod %s", name))
 
 	// Always send SSE format for detail endpoints since they're used by EventSource
 	h.sseHandler.SendSSEResponse(c, pod)

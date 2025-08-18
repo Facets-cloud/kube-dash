@@ -10,6 +10,7 @@ import (
 	"github.com/Facets-cloud/kube-dash/internal/api/utils"
 	"github.com/Facets-cloud/kube-dash/internal/k8s"
 	"github.com/Facets-cloud/kube-dash/internal/storage"
+	"github.com/Facets-cloud/kube-dash/internal/tracing"
 	"github.com/Facets-cloud/kube-dash/pkg/logger"
 
 	"github.com/gin-gonic/gin"
@@ -62,6 +63,7 @@ type NodesHandler struct {
 	sseHandler    *utils.SSEHandler
 	yamlHandler   *utils.YAMLHandler
 	eventsHandler *utils.EventsHandler
+	tracingHelper *tracing.TracingHelper
 }
 
 // NewNodesHandler creates a new NodesHandler instance
@@ -73,6 +75,7 @@ func NewNodesHandler(store *storage.KubeConfigStore, clientFactory *k8s.ClientFa
 		sseHandler:    utils.NewSSEHandler(log),
 		yamlHandler:   utils.NewYAMLHandler(log),
 		eventsHandler: utils.NewEventsHandler(log),
+		tracingHelper: tracing.GetTracingHelper(),
 	}
 }
 
@@ -187,37 +190,62 @@ func (h *NodesHandler) transformNodeToResponse(node *v1.Node) NodeListResponse {
 
 // GetNodes returns all nodes
 func (h *NodesHandler) GetNodes(c *gin.Context) {
+	// Start child span for client setup
+	ctx, clientSpan := h.tracingHelper.StartAuthSpan(c.Request.Context(), "get-client-config")
+	defer clientSpan.End()
+
 	client, err := h.getClientAndConfig(c)
 	if err != nil {
 		h.logger.WithError(err).Error("Failed to get client for nodes")
+		h.tracingHelper.RecordError(clientSpan, err, "Failed to get Kubernetes client")
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	h.tracingHelper.RecordSuccess(clientSpan, "Successfully obtained Kubernetes client")
 
-	nodes, err := client.CoreV1().Nodes().List(c.Request.Context(), metav1.ListOptions{})
+	// Start child span for Kubernetes API call
+	_, k8sSpan := h.tracingHelper.StartKubernetesAPISpan(ctx, "list", "nodes", "")
+	defer k8sSpan.End()
+
+	nodes, err := client.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		h.logger.WithError(err).Error("Failed to list nodes")
+		h.tracingHelper.RecordError(k8sSpan, err, "Failed to list nodes")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	h.tracingHelper.RecordSuccess(k8sSpan, "Successfully listed nodes")
+	h.tracingHelper.AddResourceAttributes(k8sSpan, "nodes", "node", len(nodes.Items))
+
+	// Start child span for data transformation
+	_, transformSpan := h.tracingHelper.StartDataProcessingSpan(ctx, "transform-nodes")
+	defer transformSpan.End()
 
 	// Transform nodes to frontend-expected format
 	var response []NodeListResponse
 	for _, node := range nodes.Items {
 		response = append(response, h.transformNodeToResponse(&node))
 	}
+	h.tracingHelper.RecordSuccess(transformSpan, "Successfully transformed nodes data")
+	h.tracingHelper.AddResourceAttributes(transformSpan, "transformed-nodes", "node", len(response))
 
 	c.JSON(http.StatusOK, response)
 }
 
 // GetNodesSSE returns nodes as Server-Sent Events with real-time updates
 func (h *NodesHandler) GetNodesSSE(c *gin.Context) {
+	// Start child span for client setup
+	_, clientSpan := h.tracingHelper.StartAuthSpan(c.Request.Context(), "setup-client-for-sse")
+	defer clientSpan.End()
+
 	client, err := h.getClientAndConfig(c)
 	if err != nil {
 		h.logger.WithError(err).Error("Failed to get client for nodes SSE")
+		h.tracingHelper.RecordError(clientSpan, err, "Failed to get Kubernetes client for SSE")
 		h.sseHandler.SendSSEError(c, http.StatusBadRequest, err.Error())
 		return
 	}
+	h.tracingHelper.RecordSuccess(clientSpan, "Successfully obtained Kubernetes client for SSE")
 
 	// Function to fetch and transform nodes data
 	fetchNodes := func() (interface{}, error) {
@@ -262,20 +290,34 @@ func (h *NodesHandler) GetNodesSSE(c *gin.Context) {
 
 // GetNode returns a specific node
 func (h *NodesHandler) GetNode(c *gin.Context) {
+	// Start child span for client setup
+	ctx, clientSpan := h.tracingHelper.StartAuthSpan(c.Request.Context(), "get-client-config")
+	defer clientSpan.End()
+
 	client, err := h.getClientAndConfig(c)
 	if err != nil {
 		h.logger.WithError(err).Error("Failed to get client for node")
+		h.tracingHelper.RecordError(clientSpan, err, "Failed to get Kubernetes client")
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	h.tracingHelper.RecordSuccess(clientSpan, "Successfully obtained Kubernetes client")
 
 	name := c.Param("name")
-	node, err := client.CoreV1().Nodes().Get(c.Request.Context(), name, metav1.GetOptions{})
+
+	// Start child span for Kubernetes API call
+	_, k8sSpan := h.tracingHelper.StartKubernetesAPISpan(ctx, "get", "node", "")
+	defer k8sSpan.End()
+
+	node, err := client.CoreV1().Nodes().Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		h.logger.WithError(err).WithField("node", name).Error("Failed to get node")
+		h.tracingHelper.RecordError(k8sSpan, err, "Failed to get node")
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
+	h.tracingHelper.RecordSuccess(k8sSpan, "Successfully retrieved node")
+	h.tracingHelper.AddResourceAttributes(k8sSpan, name, "node", 1)
 
 	// Check if this is an SSE request (EventSource expects SSE format)
 	acceptHeader := c.GetHeader("Accept")
@@ -289,35 +331,67 @@ func (h *NodesHandler) GetNode(c *gin.Context) {
 
 // GetNodeYAML returns the YAML representation of a specific node
 func (h *NodesHandler) GetNodeYAML(c *gin.Context) {
+	// Start child span for client setup
+	ctx, clientSpan := h.tracingHelper.StartAuthSpan(c.Request.Context(), "get-client-config")
+	defer clientSpan.End()
+
 	client, err := h.getClientAndConfig(c)
 	if err != nil {
 		h.logger.WithError(err).Error("Failed to get client for node YAML")
+		h.tracingHelper.RecordError(clientSpan, err, "Failed to get Kubernetes client")
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	h.tracingHelper.RecordSuccess(clientSpan, "Successfully obtained Kubernetes client")
 
 	name := c.Param("name")
-	node, err := client.CoreV1().Nodes().Get(c.Request.Context(), name, metav1.GetOptions{})
+
+	// Start child span for Kubernetes API call
+	_, k8sSpan := h.tracingHelper.StartKubernetesAPISpan(ctx, "get", "node", "")
+	defer k8sSpan.End()
+
+	node, err := client.CoreV1().Nodes().Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		h.logger.WithError(err).WithField("node", name).Error("Failed to get node for YAML")
+		h.tracingHelper.RecordError(k8sSpan, err, "Failed to get node for YAML")
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
+	h.tracingHelper.RecordSuccess(k8sSpan, "Successfully retrieved node for YAML")
+	h.tracingHelper.AddResourceAttributes(k8sSpan, name, "node", 1)
+
+	// Start child span for YAML generation
+	_, yamlSpan := h.tracingHelper.StartDataProcessingSpan(ctx, "generate-yaml")
+	defer yamlSpan.End()
 
 	h.yamlHandler.SendYAMLResponse(c, node, name)
+	h.tracingHelper.RecordSuccess(yamlSpan, "Successfully generated YAML response")
 }
 
 // GetNodeEvents returns events for a specific node
 func (h *NodesHandler) GetNodeEvents(c *gin.Context) {
+	// Start child span for client setup
+	ctx, clientSpan := h.tracingHelper.StartAuthSpan(c.Request.Context(), "get-client-config")
+	defer clientSpan.End()
+
 	client, err := h.getClientAndConfig(c)
 	if err != nil {
 		h.logger.WithError(err).Error("Failed to get client for node events")
+		h.tracingHelper.RecordError(clientSpan, err, "Failed to get Kubernetes client")
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	h.tracingHelper.RecordSuccess(clientSpan, "Successfully obtained Kubernetes client")
 
 	name := c.Param("name")
+
+	// Start child span for events retrieval
+	_, eventsSpan := h.tracingHelper.StartKubernetesAPISpan(ctx, "list", "events", "")
+	defer eventsSpan.End()
+
 	h.eventsHandler.GetResourceEvents(c, client, "Node", name, h.sseHandler.SendSSEResponse)
+	h.tracingHelper.RecordSuccess(eventsSpan, "Successfully retrieved node events")
+	h.tracingHelper.AddResourceAttributes(eventsSpan, name, "events", 0)
 }
 
 // GetNodePods returns pods for a specific node with SSE support
@@ -382,22 +456,35 @@ type NodeActionRequest struct {
 
 // CordonNode marks a node as unschedulable
 func (h *NodesHandler) CordonNode(c *gin.Context) {
+	// Start child span for client setup
+	ctx, clientSpan := h.tracingHelper.StartAuthSpan(c.Request.Context(), "get-client-config")
+	defer clientSpan.End()
+
 	client, err := h.getClientAndConfig(c)
 	if err != nil {
 		h.logger.WithError(err).Error("Failed to get client for cordon node")
+		h.tracingHelper.RecordError(clientSpan, err, "Failed to get Kubernetes client")
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	h.tracingHelper.RecordSuccess(clientSpan, "Successfully obtained Kubernetes client")
 
 	name := c.Param("name")
 
+	// Start child span for getting current node
+	_, getSpan := h.tracingHelper.StartKubernetesAPISpan(ctx, "get", "node", "")
+	defer getSpan.End()
+
 	// Get the current node
-	node, err := client.CoreV1().Nodes().Get(c.Request.Context(), name, metav1.GetOptions{})
+	node, err := client.CoreV1().Nodes().Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		h.logger.WithError(err).WithField("node", name).Error("Failed to get node for cordon")
+		h.tracingHelper.RecordError(getSpan, err, "Failed to get node for cordon")
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
+	h.tracingHelper.RecordSuccess(getSpan, "Successfully retrieved node for cordon")
+	h.tracingHelper.AddResourceAttributes(getSpan, name, "node", 1)
 
 	// Check if node is already cordoned
 	if node.Spec.Unschedulable {
@@ -405,11 +492,15 @@ func (h *NodesHandler) CordonNode(c *gin.Context) {
 		return
 	}
 
+	// Start child span for patch operation
+	_, patchSpan := h.tracingHelper.StartKubernetesAPISpan(ctx, "patch", "node", "")
+	defer patchSpan.End()
+
 	// Create a patch to mark the node as unschedulable
 	patch := []byte(`{"spec":{"unschedulable":true}}`)
 
 	_, err = client.CoreV1().Nodes().Patch(
-		c.Request.Context(),
+		ctx,
 		name,
 		k8stypes.StrategicMergePatchType,
 		patch,
@@ -417,9 +508,12 @@ func (h *NodesHandler) CordonNode(c *gin.Context) {
 	)
 	if err != nil {
 		h.logger.WithError(err).WithField("node", name).Error("Failed to cordon node")
+		h.tracingHelper.RecordError(patchSpan, err, "Failed to cordon node")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	h.tracingHelper.RecordSuccess(patchSpan, "Successfully cordoned node")
+	h.tracingHelper.AddResourceAttributes(patchSpan, name, "node", 1)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Node cordoned successfully"})
 }

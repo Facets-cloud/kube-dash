@@ -9,6 +9,7 @@ import (
 	"github.com/Facets-cloud/kube-dash/internal/api/utils"
 	"github.com/Facets-cloud/kube-dash/internal/k8s"
 	"github.com/Facets-cloud/kube-dash/internal/storage"
+	"github.com/Facets-cloud/kube-dash/internal/tracing"
 	"github.com/Facets-cloud/kube-dash/pkg/logger"
 
 	"github.com/gin-gonic/gin"
@@ -24,6 +25,7 @@ type NamespacesHandler struct {
 	sseHandler    *utils.SSEHandler
 	yamlHandler   *utils.YAMLHandler
 	eventsHandler *utils.EventsHandler
+	tracingHelper *tracing.TracingHelper
 }
 
 // NewNamespacesHandler creates a new NamespacesHandler instance
@@ -35,6 +37,7 @@ func NewNamespacesHandler(store *storage.KubeConfigStore, clientFactory *k8s.Cli
 		sseHandler:    utils.NewSSEHandler(log),
 		yamlHandler:   utils.NewYAMLHandler(log),
 		eventsHandler: utils.NewEventsHandler(log),
+		tracingHelper: tracing.GetTracingHelper(),
 	}
 }
 
@@ -62,31 +65,50 @@ func (h *NamespacesHandler) getClientAndConfig(c *gin.Context) (*kubernetes.Clie
 
 // GetNamespaces returns all namespaces
 func (h *NamespacesHandler) GetNamespaces(c *gin.Context) {
+	// Start child span for client setup
+	ctx, clientSpan := h.tracingHelper.StartAuthSpan(c.Request.Context(), "get-client-config")
+	defer clientSpan.End()
+
 	client, err := h.getClientAndConfig(c)
 	if err != nil {
 		h.logger.WithError(err).Error("Failed to get client for namespaces")
+		h.tracingHelper.RecordError(clientSpan, err, "Failed to get Kubernetes client")
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	h.tracingHelper.RecordSuccess(clientSpan, "Successfully obtained Kubernetes client")
 
-	namespaces, err := client.CoreV1().Namespaces().List(c.Request.Context(), metav1.ListOptions{})
+	// Start child span for Kubernetes API call
+	_, apiSpan := h.tracingHelper.StartKubernetesAPISpan(ctx, "list", "namespaces", "")
+	defer apiSpan.End()
+
+	namespaces, err := client.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		h.logger.WithError(err).Error("Failed to list namespaces")
+		h.tracingHelper.RecordError(apiSpan, err, "Failed to list namespaces")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	h.tracingHelper.RecordSuccess(apiSpan, "Successfully listed namespaces")
+	h.tracingHelper.AddResourceAttributes(apiSpan, "", "namespaces", len(namespaces.Items))
 
 	c.JSON(http.StatusOK, namespaces)
 }
 
 // GetNamespacesSSE returns namespaces as Server-Sent Events with real-time updates
 func (h *NamespacesHandler) GetNamespacesSSE(c *gin.Context) {
+	// Start child span for client setup
+	_, clientSpan := h.tracingHelper.StartAuthSpan(c.Request.Context(), "get-client-config")
+	defer clientSpan.End()
+
 	client, err := h.getClientAndConfig(c)
 	if err != nil {
 		h.logger.WithError(err).Error("Failed to get client for namespaces SSE")
+		h.tracingHelper.RecordError(clientSpan, err, "Failed to get Kubernetes client")
 		h.sseHandler.SendSSEError(c, http.StatusBadRequest, err.Error())
 		return
 	}
+	h.tracingHelper.RecordSuccess(clientSpan, "Successfully obtained Kubernetes client")
 
 	// Function to fetch namespaces data
 	fetchNamespaces := func() (interface{}, error) {
@@ -125,20 +147,34 @@ func (h *NamespacesHandler) GetNamespacesSSE(c *gin.Context) {
 
 // GetNamespace returns a specific namespace
 func (h *NamespacesHandler) GetNamespace(c *gin.Context) {
+	// Start child span for client setup
+	ctx, clientSpan := h.tracingHelper.StartAuthSpan(c.Request.Context(), "get-client-config")
+	defer clientSpan.End()
+
 	client, err := h.getClientAndConfig(c)
 	if err != nil {
 		h.logger.WithError(err).Error("Failed to get client for namespace")
+		h.tracingHelper.RecordError(clientSpan, err, "Failed to get Kubernetes client")
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	h.tracingHelper.RecordSuccess(clientSpan, "Successfully obtained Kubernetes client")
 
 	name := c.Param("name")
-	namespace, err := client.CoreV1().Namespaces().Get(c.Request.Context(), name, metav1.GetOptions{})
+
+	// Start child span for Kubernetes API call
+	_, apiSpan := h.tracingHelper.StartKubernetesAPISpan(ctx, "get", "namespace", name)
+	defer apiSpan.End()
+
+	namespace, err := client.CoreV1().Namespaces().Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		h.logger.WithError(err).WithField("namespace", name).Error("Failed to get namespace")
+		h.tracingHelper.RecordError(apiSpan, err, "Failed to get namespace")
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
+	h.tracingHelper.RecordSuccess(apiSpan, "Successfully retrieved namespace")
+	h.tracingHelper.AddResourceAttributes(apiSpan, name, "namespace", 1)
 
 	// Check if this is an SSE request (EventSource expects SSE format)
 	acceptHeader := c.GetHeader("Accept")
@@ -152,45 +188,83 @@ func (h *NamespacesHandler) GetNamespace(c *gin.Context) {
 
 // GetNamespaceYAML returns the YAML representation of a specific namespace
 func (h *NamespacesHandler) GetNamespaceYAML(c *gin.Context) {
+	// Start child span for client setup
+	ctx, clientSpan := h.tracingHelper.StartAuthSpan(c.Request.Context(), "get-client-config")
+	defer clientSpan.End()
+
 	client, err := h.getClientAndConfig(c)
 	if err != nil {
 		h.logger.WithError(err).Error("Failed to get client for namespace YAML")
+		h.tracingHelper.RecordError(clientSpan, err, "Failed to get Kubernetes client")
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	h.tracingHelper.RecordSuccess(clientSpan, "Successfully obtained Kubernetes client")
 
 	name := c.Param("name")
-	namespace, err := client.CoreV1().Namespaces().Get(c.Request.Context(), name, metav1.GetOptions{})
+
+	// Start child span for Kubernetes API call
+	_, apiSpan := h.tracingHelper.StartKubernetesAPISpan(ctx, "get", "namespace", name)
+	defer apiSpan.End()
+
+	namespace, err := client.CoreV1().Namespaces().Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		h.logger.WithError(err).WithField("namespace", name).Error("Failed to get namespace for YAML")
+		h.tracingHelper.RecordError(apiSpan, err, "Failed to get namespace for YAML")
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
+	h.tracingHelper.RecordSuccess(apiSpan, "Successfully retrieved namespace for YAML")
+	h.tracingHelper.AddResourceAttributes(apiSpan, name, "namespace", 1)
+
+	// Start child span for YAML generation
+	_, yamlSpan := h.tracingHelper.StartDataProcessingSpan(ctx, "generate-yaml")
+	defer yamlSpan.End()
 
 	h.yamlHandler.SendYAMLResponse(c, namespace, name)
+	h.tracingHelper.RecordSuccess(yamlSpan, "Successfully generated YAML response")
 }
 
 // GetNamespaceEvents returns events for a specific namespace
 func (h *NamespacesHandler) GetNamespaceEvents(c *gin.Context) {
+	// Start child span for client setup
+	ctx, clientSpan := h.tracingHelper.StartAuthSpan(c.Request.Context(), "get-client-config")
+	defer clientSpan.End()
+
 	client, err := h.getClientAndConfig(c)
 	if err != nil {
 		h.logger.WithError(err).Error("Failed to get client for namespace events")
+		h.tracingHelper.RecordError(clientSpan, err, "Failed to get Kubernetes client")
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	h.tracingHelper.RecordSuccess(clientSpan, "Successfully obtained Kubernetes client")
 
 	name := c.Param("name")
+
+	// Start child span for events retrieval
+	_, eventsSpan := h.tracingHelper.StartKubernetesAPISpan(ctx, "list", "events", name)
+	defer eventsSpan.End()
+
 	h.eventsHandler.GetResourceEvents(c, client, "Namespace", name, h.sseHandler.SendSSEResponse)
+	h.tracingHelper.RecordSuccess(eventsSpan, "Successfully retrieved namespace events")
+	h.tracingHelper.AddResourceAttributes(eventsSpan, name, "events", 0)
 }
 
 // GetNamespacePods returns pods for a specific namespace with SSE support
 func (h *NamespacesHandler) GetNamespacePods(c *gin.Context) {
+	// Start child span for client setup
+	_, clientSpan := h.tracingHelper.StartAuthSpan(c.Request.Context(), "get-client-config")
+	defer clientSpan.End()
+
 	client, err := h.getClientAndConfig(c)
 	if err != nil {
 		h.logger.WithError(err).Error("Failed to get client for namespace pods")
+		h.tracingHelper.RecordError(clientSpan, err, "Failed to get Kubernetes client")
 		h.sseHandler.SendSSEError(c, http.StatusBadRequest, err.Error())
 		return
 	}
+	h.tracingHelper.RecordSuccess(clientSpan, "Successfully obtained Kubernetes client")
 
 	namespaceName := c.Param("name")
 	configID := c.Query("config")

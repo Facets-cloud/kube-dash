@@ -18,14 +18,17 @@ import (
 	"github.com/Facets-cloud/kube-dash/internal/api/handlers/networking"
 	"github.com/Facets-cloud/kube-dash/internal/api/handlers/portforward"
 	storage_handlers "github.com/Facets-cloud/kube-dash/internal/api/handlers/storage"
+	tracing_handlers "github.com/Facets-cloud/kube-dash/internal/api/handlers/tracing"
 	"github.com/Facets-cloud/kube-dash/internal/api/handlers/websocket"
 	"github.com/Facets-cloud/kube-dash/internal/api/handlers/websockets"
 	"github.com/Facets-cloud/kube-dash/internal/api/handlers/workloads"
 	"github.com/Facets-cloud/kube-dash/internal/config"
 	"github.com/Facets-cloud/kube-dash/internal/k8s"
 	"github.com/Facets-cloud/kube-dash/internal/storage"
+	"github.com/Facets-cloud/kube-dash/internal/tracing"
 	"github.com/Facets-cloud/kube-dash/pkg/logger"
 	"github.com/Facets-cloud/kube-dash/pkg/middleware"
+	pkg_tracing "github.com/Facets-cloud/kube-dash/pkg/tracing"
 
 	"github.com/gin-gonic/gin"
 )
@@ -102,6 +105,13 @@ type Server struct {
 
 	// Cloud Shell handlers
 	cloudShellHandler *cloudshell.CloudShellHandler
+
+	// Tracing handlers
+	tracingHandler *tracing_handlers.TracingHandler
+	traceStore     *tracing.TraceStore
+
+	// Feature flags handler
+	featureFlagsHandler *handlers.FeatureFlagsHandler
 }
 
 // New creates a new server instance
@@ -189,6 +199,26 @@ func New(cfg *config.Config) *Server {
 	// Create Cloud Shell handlers
 	cloudShellHandler := cloudshell.NewCloudShellHandler(store, clientFactory, helmFactory, log)
 
+	// Initialize OpenTelemetry tracing service
+	var tracingService *tracing.TracingService
+	var traceStore *tracing.TraceStore
+	if cfg.Tracing.Enabled {
+		var err error
+		tracingService, err = tracing.NewTracingService(&cfg.Tracing, log)
+		if err != nil {
+			log.WithError(err).Fatal("Failed to initialize tracing service")
+		}
+		traceStore = tracingService.GetStore()
+	} else {
+		traceStore = tracing.NewTraceStore(&cfg.Tracing)
+	}
+
+	// Create tracing handlers
+	tracingHandler := tracing_handlers.NewTracingHandler(store, traceStore, log, &cfg.Tracing)
+
+	// Create feature flags handler
+	featureFlagsHandler := handlers.NewFeatureFlagsHandler(log)
+
 	// Create server
 	srv := &Server{
 		config:               cfg,
@@ -259,6 +289,13 @@ func New(cfg *config.Config) *Server {
 
 		// Cloud Shell handlers
 		cloudShellHandler: cloudShellHandler,
+
+		// Tracing handlers
+		tracingHandler: tracingHandler,
+		traceStore:     traceStore,
+
+		// Feature flags handler
+		featureFlagsHandler: featureFlagsHandler,
 	}
 
 	// Setup middleware
@@ -290,6 +327,11 @@ func (s *Server) setupMiddleware() {
 	// CORS middleware
 	s.router.Use(middleware.CORS())
 
+	// OpenTelemetry tracing middleware
+	if s.config.Tracing.Enabled {
+		s.router.Use(tracing.TracingMiddleware(s.config.Tracing.ServiceName))
+	}
+
 	// Logging middleware
 	s.router.Use(middleware.Logger(s.logger.Logger))
 }
@@ -309,6 +351,11 @@ func (s *Server) setupRoutes() {
 		api.GET("/metrics/overview/prometheus", s.prometheusHandler.GetClusterOverviewSSE)
 		// API info
 		api.GET("/", s.apiInfo)
+
+		// Feature flags endpoint
+		api.GET("/feature-flags", s.featureFlagsHandler.GetFeatureFlags)
+
+
 
 		// Kubeconfig management
 		api.GET("/app/config", s.kubeHandler.GetConfigs)
@@ -652,6 +699,17 @@ func (s *Server) setupRoutes() {
 		api.GET("/cloudshell/ws", s.cloudShellHandler.HandleCloudShellWebSocket)
 		api.DELETE("/cloudshell/:name", s.cloudShellHandler.DeleteCloudShell)
 		api.POST("/cloudshell/cleanup", s.cloudShellHandler.ManualCleanup)
+
+		// Tracing endpoints
+		if s.config.Tracing.Enabled {
+			api.GET("/traces", s.tracingHandler.GetTraces)
+			api.GET("/traces/:traceId", s.tracingHandler.GetTrace)
+			api.GET("/traces/service-map", s.tracingHandler.GetServiceMap)
+			api.GET("/traces/export", s.tracingHandler.ExportTraces)
+			api.GET("/tracing/config", s.tracingHandler.GetTracingConfig)
+			api.PUT("/tracing/config", s.tracingHandler.UpdateTracingConfig)
+			api.GET("/tracing/stats", s.tracingHandler.GetTracingStats)
+		}
 	}
 
 	// Serve static files from the dist folder
@@ -714,6 +772,14 @@ func (s *Server) Start() error {
 // Stop gracefully stops the server
 func (s *Server) Stop(ctx context.Context) error {
 	s.logger.Info("Stopping server")
+	
+	// Shutdown tracing service
+	if s.config.Tracing.Enabled {
+		if err := pkg_tracing.Shutdown(ctx); err != nil {
+			s.logger.WithError(err).Warn("Failed to shutdown tracing service")
+		}
+	}
+	
 	return s.server.Shutdown(ctx)
 }
 

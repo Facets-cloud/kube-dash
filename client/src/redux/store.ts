@@ -107,6 +107,7 @@ import listTableNodeArchitectureSlice from '@/data/Misc/ListTableNodeArchitectur
 import listTableNodeConditionSlice from '@/data/Misc/ListTableNodeConditionSlice';
 import listTableNodeOperatingSystemSlice from '@/data/Misc/ListTableNodeOperatingSystemSlice';
 import clusterOverviewSlice from '@/data/Overview/ClusterOverviewSlice';
+import tracingSlice from '@/data/Tracing/TracingSlice';
 
 const store = configureStore({
   reducer: {
@@ -219,6 +220,7 @@ const store = configureStore({
     listTableNodeCondition: listTableNodeConditionSlice,
     listTableNodeOperatingSystem: listTableNodeOperatingSystemSlice,
     clusterOverview: clusterOverviewSlice,
+    tracing: tracingSlice,
   },
 });
 

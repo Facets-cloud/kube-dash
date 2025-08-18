@@ -1,4 +1,5 @@
 import { NavigationRoutes } from "@/types";
+import { isFeatureEnabled } from "./FeatureFlags";
 
 const NAVIGATION_ROUTE: NavigationRoutes = {
   'Cluster': [
@@ -151,6 +152,10 @@ const NAVIGATION_ROUTE: NavigationRoutes = {
     {
       name: 'Cloud Shell',
       route: 'cloudshell'
+    },
+    {
+      name: 'Tracing',
+      route: 'tools/tracing'
     }
   ],
   'Preferences': [
@@ -159,6 +164,20 @@ const NAVIGATION_ROUTE: NavigationRoutes = {
       route: 'settings'
     }
   ]
+};
+
+// Function to get navigation routes with feature flag filtering
+export const getFilteredNavigationRoutes = (): NavigationRoutes => {
+  const routes = { ...NAVIGATION_ROUTE };
+  
+  // Filter out tracing routes if feature is disabled
+  if (!isFeatureEnabled('ENABLE_TRACING')) {
+    routes['Tools'] = routes['Tools'].filter(route => 
+      !route.route.includes('tracing')
+    );
+  }
+  
+  return routes;
 };
 
 export {
