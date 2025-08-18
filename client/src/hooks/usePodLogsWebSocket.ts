@@ -9,6 +9,8 @@ export interface LogMessage {
   level?: string;
   lineNumber: number;
   rawTimestamp?: string;
+  isPrevious?: boolean;
+  podInstance?: string;
 }
 
 export interface ControlMessage {
@@ -27,6 +29,8 @@ export interface UsePodLogsWebSocketOptions {
   allContainers?: boolean;
   tailLines?: number;
   sinceTime?: string;
+  previous?: boolean;
+  allLogs?: boolean;
   onLog?: (log: LogMessage) => void;
   onControl?: (control: ControlMessage) => void;
   onConnectionChange?: (status: 'connecting' | 'connected' | 'disconnected' | 'error') => void;
@@ -53,6 +57,8 @@ export const usePodLogsWebSocket = ({
   allContainers = false,
   tailLines = 100,
   sinceTime,
+  previous = false,
+  allLogs = false,
   onLog,
   onControl,
   onConnectionChange,
@@ -76,8 +82,14 @@ export const usePodLogsWebSocket = ({
     const params = new URLSearchParams({
       config: configName,
       cluster: clusterName,
-      'tail-lines': tailLines.toString(),
     });
+    
+    // Add tail-lines only if not fetching all logs
+    if (!allLogs) {
+      params.set('tail-lines', tailLines.toString());
+    } else {
+      params.set('all-logs', 'true');
+    }
     
     if (container) {
       params.set('container', container);
@@ -89,8 +101,12 @@ export const usePodLogsWebSocket = ({
       params.set('since-time', sinceTime);
     }
     
+    if (previous) {
+      params.set('previous', 'true');
+    }
+    
     return `${protocol}//${window.location.host}/api/v1/pods/${namespace}/${podName}/logs/ws?${params.toString()}`;
-  }, [podName, namespace, configName, clusterName, container, allContainers, tailLines, sinceTime]);
+  }, [podName, namespace, configName, clusterName, container, allContainers, tailLines, sinceTime, previous, allLogs]);
 
   // Send message to WebSocket
   const sendMessage = useCallback((message: any) => {
@@ -257,7 +273,7 @@ export const usePodLogsWebSocket = ({
     return () => {
       disconnect();
     };
-  }, [enabled, podName, namespace, configName, clusterName, container, allContainers, tailLines, sinceTime]);
+  }, [enabled, podName, namespace, configName, clusterName, container, allContainers, tailLines, sinceTime, previous, allLogs]);
 
   // Cleanup on unmount
   useEffect(() => {

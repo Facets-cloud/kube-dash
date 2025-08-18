@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Facets-cloud/kube-dash/internal/k8s"
@@ -43,6 +44,8 @@ type LogMessage struct {
 	Level         string    `json:"level,omitempty"`
 	LineNumber    int       `json:"lineNumber"`
 	RawTimestamp  string    `json:"rawTimestamp,omitempty"`
+	IsPrevious    bool      `json:"isPrevious,omitempty"`  // New field to indicate if log is from previous pod instance
+	PodInstance   string    `json:"podInstance,omitempty"` // New field to indicate pod instance (current/previous)
 }
 
 // ControlMessage represents control messages for the WebSocket connection
@@ -212,6 +215,8 @@ func (h *PodLogsHandler) HandlePodLogs(c *gin.Context) {
 	// Get parameters
 	container := c.Query("container")
 	allContainers := c.Query("all-containers") == "true"
+	previous := c.Query("previous") == "true"           // New parameter for previous pod logs
+	allLogs := c.Query("all-logs") == "true"             // New parameter for all logs (ignores tail-lines)
 
 	// Parse tail lines parameter
 	tailLinesStr := c.Query("tail-lines")
@@ -324,13 +329,18 @@ func (h *PodLogsHandler) HandlePodLogs(c *gin.Context) {
 		}
 	}()
 
-	// Function to stream logs for a specific container
-	streamContainerLogs := func(containerName string) error {
+	// Function to stream logs for a specific container with enhanced options
+	streamContainerLogs := func(containerName string, isPrevious bool, podInstance string) error {
 		// Build pod log options
 		podLogOptions := &v1.PodLogOptions{
 			Container: containerName,
-			Follow:    true,
-			TailLines: &tailLines,
+			Follow:    !isPrevious, // Don't follow for previous logs
+			Previous:  isPrevious,  // New parameter for previous logs
+		}
+
+		// Set tail lines based on allLogs parameter
+		if !allLogs && tailLines > 0 {
+			podLogOptions.TailLines = &tailLines
 		}
 
 		// Add timestamp filtering if specified
@@ -346,15 +356,30 @@ func (h *PodLogsHandler) HandlePodLogs(c *gin.Context) {
 		}
 		defer stream.Close()
 
-		// Send container start message
+		// Send container start message with instance information
 		containerMsg := ControlMessage{
 			Type: "container_start",
 			Data: map[string]interface{}{
-				"container": containerName,
+				"container":   containerName,
+				"isPrevious":  isPrevious,
+				"podInstance": podInstance,
 			},
 			Timestamp: time.Now(),
 		}
 		h.sendWebSocketMessage(conn, containerMsg)
+
+		// Send previous logs start message if applicable
+		if isPrevious {
+			previousStartMsg := ControlMessage{
+				Type: "previous_logs_start",
+				Data: map[string]interface{}{
+					"container":    containerName,
+					"instanceType": "previous",
+				},
+				Timestamp: time.Now(),
+			}
+			h.sendWebSocketMessage(conn, previousStartMsg)
+		}
 
 		scanner := bufio.NewScanner(stream)
 		lineNumber := 1
@@ -373,7 +398,7 @@ func (h *PodLogsHandler) HandlePodLogs(c *gin.Context) {
 				timestamp, rawTimestamp := h.extractTimestamp(logLine)
 				level := h.detectLogLevel(logLine)
 
-				// Create log message
+				// Create log message with enhanced fields
 				logMsg := LogMessage{
 					Type:         "log",
 					Timestamp:    timestamp,
@@ -382,6 +407,8 @@ func (h *PodLogsHandler) HandlePodLogs(c *gin.Context) {
 					Level:        level,
 					LineNumber:   lineNumber,
 					RawTimestamp: rawTimestamp,
+					IsPrevious:   isPrevious,
+					PodInstance:  podInstance,
 				}
 
 				// Send log message immediately
@@ -399,38 +426,85 @@ func (h *PodLogsHandler) HandlePodLogs(c *gin.Context) {
 			return err
 		}
 
+		// Send previous logs end message if applicable
+		if isPrevious {
+			previousEndMsg := ControlMessage{
+				Type: "previous_logs_end",
+				Data: map[string]interface{}{
+					"container":    containerName,
+					"instanceType": "previous",
+				},
+				Timestamp: time.Now(),
+			}
+			h.sendWebSocketMessage(conn, previousEndMsg)
+		}
+
 		return nil
 	}
 
-	// Stream logs for all containers or specific container
+	// Enhanced streaming logic to handle previous and current logs sequentially
+	streamLogsForContainers := func(containerNames []string) {
+		// First, stream previous logs if requested and wait for completion
+		if previous {
+			var wg sync.WaitGroup
+			for _, containerName := range containerNames {
+				wg.Add(1)
+				go func(cName string) {
+					defer wg.Done()
+					if err := streamContainerLogs(cName, true, "previous"); err != nil {
+						if streamingCtx.Err() == nil {
+							h.logger.WithError(err).WithField("container", cName).Error("Error streaming previous container logs")
+						}
+					}
+				}(containerName)
+			}
+			// Wait for all previous logs to complete
+			wg.Wait()
+
+			// Send transition message to indicate previous logs are complete
+			transitionMsg := ControlMessage{
+				Type: "logs_transition",
+				Data: map[string]interface{}{
+					"message": "Previous logs completed, starting current logs",
+					"from":    "previous",
+					"to":      "current",
+				},
+				Timestamp: time.Now(),
+			}
+			h.sendWebSocketMessage(conn, transitionMsg)
+		}
+
+		// Then, stream current logs
+		for _, containerName := range containerNames {
+			go func(cName string) {
+				if err := streamContainerLogs(cName, false, "current"); err != nil {
+					if streamingCtx.Err() == nil {
+						h.logger.WithError(err).WithField("container", cName).Error("Error streaming current container logs")
+					}
+				}
+			}(containerName)
+		}
+	}
+
+	// Determine which containers to stream
+	var containersToStream []string
 	if allContainers {
-		// Stream logs from all containers concurrently
+		// Stream logs from all containers
 		for _, containerSpec := range pod.Spec.Containers {
-			go func(containerName string) {
-				if err := streamContainerLogs(containerName); err != nil {
-					if streamingCtx.Err() == nil { // Only log if not cancelled
-					h.logger.WithError(err).WithField("container", containerName).Error("Error streaming container logs")
-				}
-				}
-			}(containerSpec.Name)
+			containersToStream = append(containersToStream, containerSpec.Name)
 		}
 	} else if container != "" {
 		// Stream logs from specific container
-		if err := streamContainerLogs(container); err != nil {
-			if streamingCtx.Err() == nil { // Only log if not cancelled
-				h.logger.WithError(err).WithField("container", container).Error("Error streaming container logs")
-			}
-		}
+		containersToStream = []string{container}
 	} else {
 		// Default to first container
 		if len(pod.Spec.Containers) > 0 {
-			if err := streamContainerLogs(pod.Spec.Containers[0].Name); err != nil {
-				if streamingCtx.Err() == nil { // Only log if not cancelled
-					h.logger.WithError(err).WithField("container", pod.Spec.Containers[0].Name).Error("Error streaming container logs")
-				}
-			}
+			containersToStream = []string{pod.Spec.Containers[0].Name}
 		}
 	}
+
+	// Start streaming for selected containers
+	streamLogsForContainers(containersToStream)
 
 	// Wait for context cancellation
 	<-streamingCtx.Done()

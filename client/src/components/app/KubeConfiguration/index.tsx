@@ -216,7 +216,6 @@ export function KubeConfiguration() {
           <div className="flex items-center justify-between">
             <div className="flex items-end">
               <img className="w-12" src={getSystemTheme() === 'light' ? kwLogoLight : kwLogoDark} alt="Facets KubeDash" />
-              <span className="ml-2 text-xs">({clusters.version})</span>
             </div>
             <div className="flex space-x-2">
               <AddConfig />

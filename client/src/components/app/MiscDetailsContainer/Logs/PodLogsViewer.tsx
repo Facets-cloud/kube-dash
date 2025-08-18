@@ -7,8 +7,10 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 import { toast } from 'sonner';
+
 import {
   Download,
   Search,
@@ -23,6 +25,8 @@ import {
   XCircle,
   Filter,
   Regex,
+  History,
+  Hash,
 } from 'lucide-react';
 import { usePodLogsWebSocket, LogMessage } from '@/hooks/usePodLogsWebSocket';
 import { cn } from '@/lib/utils';
@@ -40,6 +44,8 @@ interface PodLogsViewerProps {
 interface LogEntry extends LogMessage {
   id: string;
   searchMatch?: boolean;
+  isPrevious?: boolean;
+  podInstance?: string;
 }
 
 const LOG_LEVEL_COLORS = {
@@ -59,6 +65,84 @@ const LOG_LEVEL_ICONS = {
   debug: Terminal,
   trace: Terminal,
 } as const;
+
+const LogRetrievalControls: React.FC<{
+  includePrevious: boolean;
+  onIncludePreviousChange: (value: boolean) => void;
+  logMode: 'all' | 'tail';
+  onLogModeChange: (mode: 'all' | 'tail') => void;
+  maxLines: number;
+  onMaxLinesChange: (lines: number) => void;
+}> = ({ 
+  includePrevious, 
+  onIncludePreviousChange, 
+  logMode, 
+  onLogModeChange, 
+  maxLines, 
+  onMaxLinesChange
+}) => {
+  
+  return (
+    <div className="flex items-center gap-4 p-3 border-b bg-muted/30">
+      <div className="flex items-center gap-2">
+        <History className="w-4 h-4 text-muted-foreground" />
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="flex items-center gap-2">
+                <Label 
+                  htmlFor="previous-logs" 
+                  className="text-sm font-medium"
+                >
+                  Show Previous Logs
+                </Label>
+                <Switch
+                  id="previous-logs"
+                  checked={includePrevious}
+                  onCheckedChange={onIncludePreviousChange}
+                />
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Toggle between current and previous pod logs</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
+      
+      <Separator orientation="vertical" className="h-6" />
+      
+      <div className="flex items-center gap-2">
+        <Label className="text-sm font-medium">Log Retrieval:</Label>
+        <Select value={logMode} onValueChange={onLogModeChange}>
+          <SelectTrigger className="w-32">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Logs</SelectItem>
+            <SelectItem value="tail">Recent Lines</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      
+      {logMode === 'tail' && (
+        <div className="flex items-center gap-2">
+          <Hash className="w-4 h-4 text-muted-foreground" />
+          <Input
+            type="number"
+            min={1}
+            max={10000}
+            value={maxLines}
+            onChange={(e) => onMaxLinesChange(parseInt(e.target.value) || 100)}
+            className="w-20"
+            placeholder="100"
+          />
+          <Label className="text-sm text-muted-foreground">lines</Label>
+        </div>
+      )}
+    </div>
+  );
+};
 
 const LogLine: React.FC<{
   log: LogEntry;
@@ -88,9 +172,17 @@ const LogLine: React.FC<{
     <div
       className={cn(
         'flex items-start gap-2 px-3 py-1 text-sm font-mono hover:bg-muted/50 group border-b border-border/20',
-        log.searchMatch && 'bg-yellow-50 dark:bg-yellow-900/20'
+        log.searchMatch && 'bg-yellow-50 dark:bg-yellow-900/20',
+        log.isPrevious && 'bg-blue-50 dark:bg-blue-900/10 border-l-2 border-l-blue-500'
       )}
     >
+      
+      {/* Previous log indicator */}
+      {log.isPrevious && (
+        <Badge variant="outline" className="text-xs h-5 px-1.5 bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
+          Previous
+        </Badge>
+      )}
       
       {/* Timestamp */}
       {showTimestamps && (
@@ -147,17 +239,67 @@ export const PodLogsViewer: React.FC<PodLogsViewerProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<number[]>([]);
   const [currentSearchIndex, setCurrentSearchIndex] = useState(-1);
-  const [tailLines] = useState(100);
   const [logLevel] = useState<string>('all');
   const [selectedContainer, setSelectedContainer] = useState<string>('all');
   const [searchMode, setSearchMode] = useState<'simple' | 'regex' | 'grep'>('simple');
   const [caseSensitive, setCaseSensitive] = useState(false);
   const [availableContainers, setAvailableContainers] = useState<string[]>([]);
   
+  // New state variables for enhanced functionality
+  const [includePrevious, setIncludePrevious] = useState(false);
+  const [logMode, setLogMode] = useState<'all' | 'tail'>('tail');
+  const [maxLines, setMaxLines] = useState(100);
+  const [hasReceivedLogs, setHasReceivedLogs] = useState(false);
+  const [noPreviousLogsDetected, setNoPreviousLogsDetected] = useState(false);
+  
+  // Handler for includePrevious toggle that clears logs and restarts connection
+  const handleIncludePreviousChange = useCallback((value: boolean) => {
+    // Clear existing logs when toggling
+    setLogs([]);
+    setSearchResults([]);
+    setCurrentSearchIndex(-1);
+    setAvailableContainers([]);
+    setHasReceivedLogs(false);
+    setNoPreviousLogsDetected(false);
+    
+    // Clear any existing timeout
+    if (noPreviousLogsTimeoutRef.current) {
+      clearTimeout(noPreviousLogsTimeoutRef.current);
+      noPreviousLogsTimeoutRef.current = null;
+    }
+    
+    // If switching to previous logs, set a timeout to detect if no logs are received
+    if (value) {
+      noPreviousLogsTimeoutRef.current = setTimeout(() => {
+        if (!hasReceivedLogs && includePrevious) {
+          setNoPreviousLogsDetected(true);
+          setIncludePrevious(false);
+          toast.info('No previous logs available for this pod. Switching to current logs.');
+        }
+      }, 3000); // Wait 3 seconds for logs
+    }
+    
+    // Update the state which will trigger WebSocket reconnection
+    setIncludePrevious(value);
+    
+  }, [hasReceivedLogs, includePrevious]);
+  
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const logIdCounter = useRef(0);
   const userScrolledRef = useRef(false);
   const lastScrollTop = useRef(0);
+  const noPreviousLogsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Scroll to bottom
+  const scrollToBottom = useCallback(() => {
+    if (scrollAreaRef.current) {
+      scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
+      setAutoScroll(true);
+      userScrolledRef.current = false;
+    }
+  }, []);
+  
+
   
   // WebSocket connection
   const {
@@ -171,13 +313,23 @@ export const PodLogsViewer: React.FC<PodLogsViewerProps> = ({
     clusterName,
     container,
     allContainers,
-    tailLines,
+    tailLines: logMode === 'tail' ? maxLines : undefined,
+    previous: includePrevious,
+    allLogs: logMode === 'all',
     enabled: !isPaused,
     onLog: useCallback((logMessage: LogMessage) => {
       const logEntry: LogEntry = {
         ...logMessage,
         id: `log-${logIdCounter.current++}`,
       };
+      
+      setHasReceivedLogs(true);
+      
+      // Clear the no previous logs timeout since we received logs
+      if (noPreviousLogsTimeoutRef.current) {
+        clearTimeout(noPreviousLogsTimeoutRef.current);
+        noPreviousLogsTimeoutRef.current = null;
+      }
       
       // Update available containers
       if (logEntry.container) {
@@ -196,15 +348,34 @@ export const PodLogsViewer: React.FC<PodLogsViewerProps> = ({
       });
     }, []),
     onError: useCallback((error: string) => {
-      toast.error('Log Stream Error', {
-        description: error,
-      });
-    }, []),
+      // Check if this is a "no previous logs" scenario
+      if (includePrevious && (error.includes('no previous') || error.includes('not found') || error.includes('no logs'))) {
+        setNoPreviousLogsDetected(true);
+        // Auto-switch back to current logs
+        setTimeout(() => {
+          setIncludePrevious(false);
+          toast.info('No previous logs available for this pod. Switching to current logs.');
+        }, 1000);
+      } else {
+        toast.error('Log Stream Error', {
+          description: error,
+        });
+      }
+    }, [includePrevious]),
   });
 
   // Filter logs based on level, container, and search (for grep mode)
   const filteredLogs = useMemo(() => {
     let filtered = logs;
+    
+    // First filter by toggle state - this is the most important filter
+    if (includePrevious) {
+      // When toggle is ON, show only previous logs
+      filtered = filtered.filter(log => log.isPrevious === true);
+    } else {
+      // When toggle is OFF, show only current logs (not previous)
+      filtered = filtered.filter(log => log.isPrevious !== true);
+    }
     
     // Filter by log level
     if (logLevel !== 'all') {
@@ -234,7 +405,7 @@ export const PodLogsViewer: React.FC<PodLogsViewerProps> = ({
     }
     
     return filtered;
-   }, [logs, logLevel, selectedContainer, searchTerm, searchMode, caseSensitive]);
+   }, [logs, logLevel, selectedContainer, searchTerm, searchMode, caseSensitive, includePrevious]);
 
   // Enhanced search functionality with regex and simple search support (grep filtering is handled in filteredLogs)
   const performSearch = useCallback((logs: LogEntry[], term: string) => {
@@ -291,9 +462,18 @@ export const PodLogsViewer: React.FC<PodLogsViewerProps> = ({
   // Auto-scroll to bottom when new logs arrive
   useEffect(() => {
     if (autoScroll && !userScrolledRef.current && filteredLogs.length > 0 && scrollAreaRef.current) {
-      scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
+      scrollToBottom();
     }
-  }, [filteredLogs.length, autoScroll]);
+  }, [filteredLogs, autoScroll, scrollToBottom]);
+  
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (noPreviousLogsTimeoutRef.current) {
+        clearTimeout(noPreviousLogsTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Handle scroll events to detect user scrolling
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
@@ -374,14 +554,7 @@ export const PodLogsViewer: React.FC<PodLogsViewerProps> = ({
     }
   }, [searchResults, currentSearchIndex]);
 
-  // Scroll to bottom
-  const scrollToBottom = useCallback(() => {
-    if (filteredLogs.length > 0 && scrollAreaRef.current) {
-      scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
-      setAutoScroll(true);
-      userScrolledRef.current = false;
-    }
-  }, [filteredLogs.length]);
+
 
   const connectionStatus = isConnecting ? 'connecting' : isConnected ? 'connected' : 'disconnected';
   const statusColor = {
@@ -565,15 +738,38 @@ export const PodLogsViewer: React.FC<PodLogsViewerProps> = ({
         </div>
       </CardHeader>
       
+      {/* Log Retrieval Controls */}
+      <LogRetrievalControls
+          includePrevious={includePrevious}
+          onIncludePreviousChange={handleIncludePreviousChange}
+          logMode={logMode}
+          onLogModeChange={setLogMode}
+          maxLines={maxLines}
+          onMaxLinesChange={setMaxLines}
+        />
+      
       <CardContent className="flex-1 p-0 min-h-0">
         {filteredLogs.length === 0 ? (
           <div className="flex items-center justify-center h-full text-muted-foreground">
             <div className="text-center">
               <Terminal className="w-12 h-12 mx-auto mb-4 opacity-50" />
-              <p>No logs available</p>
-              <p className="text-xs mt-1">
-                {isPaused ? 'Streaming is paused' : 'Waiting for logs...'}
-              </p>
+              {includePrevious ? (
+                <>
+                  <p>Loading previous logs...</p>
+                  <p className="text-xs mt-1">
+                    {noPreviousLogsDetected 
+                      ? 'No previous logs found. Switching to current logs...' 
+                      : 'Searching for logs from previous pod instances...'}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p>No logs available</p>
+                  <p className="text-xs mt-1">
+                    {isPaused ? 'Streaming is paused' : 'Waiting for logs...'}
+                  </p>
+                </>
+              )}
             </div>
           </div>
         ) : (
