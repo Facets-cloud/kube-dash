@@ -1,6 +1,6 @@
 import { BearerTokenConfig, CertificateConfig, KubeconfigFileConfig } from "@/types";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { KUBECONFIGS_BEARER_URL, KUBECONFIGS_CERTIFICATE_URL, KUBECONFIGS_URL, KUBECONFIGS_VALIDATE_BEARER_URL, KUBECONFIGS_VALIDATE_CERTIFICATE_URL } from "@/constants";
+import { KUBECONFIGS_BEARER_URL, KUBECONFIGS_CERTIFICATE_URL, KUBECONFIGS_VALIDATE_BEARER_URL, KUBECONFIGS_VALIDATE_CERTIFICATE_URL } from "@/constants";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { addConfig, resetAddConfig } from "@/data/KwClusters/AddConfigSlice";
 import { validateConfig, resetValidateConfig } from "@/data/KwClusters/ValidateConfigSlice";
@@ -10,18 +10,27 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { PlusCircledIcon, CheckCircledIcon, CrossCircledIcon, ReloadIcon, ArrowUpIcon } from "@radix-ui/react-icons";
+import { PlusCircledIcon, CheckCircledIcon, ReloadIcon, ArrowUpIcon } from "@radix-ui/react-icons";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { fetchClusters } from "@/data/KwClusters/ClustersSlice";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
 
-interface FileUploadResult {
+
+interface FileValidationStatus {
   filename: string;
-  success: boolean;
-  message: string;
+  status: 'pending' | 'validating' | 'passed' | 'failed' | 'uploading' | 'uploaded';
+  message?: string;
+  error?: string;
   configId?: string;
+  file: File;
+  content?: string;
+}
+
+interface ValidationProgress {
+  total: number;
+  completed: number;
+  phase: 'validation' | 'upload' | 'complete';
 }
 
 const AddConfig = () => {
@@ -34,7 +43,8 @@ const AddConfig = () => {
   const [activeTab, setActiveTab] = useState("bearerToken");
   const [validationPerformed, setValidationPerformed] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  const [uploadResults, setUploadResults] = useState<FileUploadResult[]>([]);
+  const [fileValidationStatuses, setFileValidationStatuses] = useState<FileValidationStatus[]>([]);
+  const [validationProgress, setValidationProgress] = useState<ValidationProgress>({ total: 0, completed: 0, phase: 'validation' });
   const [isUploading, setIsUploading] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const dispatch = useAppDispatch();
@@ -81,6 +91,15 @@ const AddConfig = () => {
     const files = Array.from(e.target.files || []);
     setSelectedFiles(files);
     
+    // Initialize validation statuses for all files
+    const initialStatuses: FileValidationStatus[] = files.map(file => ({
+      filename: file.name,
+      status: 'pending',
+      file: file
+    }));
+    setFileValidationStatuses(initialStatuses);
+    setValidationProgress({ total: files.length, completed: 0, phase: 'validation' });
+    
     // If only one file is selected, also populate the text area for validation
     if (files.length === 1) {
       const file = files[0];
@@ -124,6 +143,15 @@ const AddConfig = () => {
     if (files.length > 0) {
       setSelectedFiles(files);
       
+      // Initialize validation statuses for all files
+      const initialStatuses: FileValidationStatus[] = files.map(file => ({
+        filename: file.name,
+        status: 'pending',
+        file: file
+      }));
+      setFileValidationStatuses(initialStatuses);
+      setValidationProgress({ total: files.length, completed: 0, phase: 'validation' });
+      
       // If only one file is selected, also populate the text area for validation
       if (files.length === 1) {
         const file = files[0];
@@ -153,25 +181,15 @@ const AddConfig = () => {
     setTextValue('');
     setValidationPerformed(false);
     setSelectedFiles([]);
-    setUploadResults([]);
+    setFileValidationStatuses([]);
+    setValidationProgress({ total: 0, completed: 0, phase: 'validation' });
     setIsUploading(false);
     setIsDragOver(false);
     setModalOpen(open);
     dispatch(resetValidateConfig());
   };
 
-  const validateKubeconfig = () => {
-    if (!kubeconfigFileConfig.config) {
-      toast.error("No kubeconfig content to validate");
-      return;
-    }
 
-    const formData = new FormData();
-    formData.append("file", kubeconfigFileConfig.config);
-    
-    dispatch(validateConfig({ formData }));
-    setValidationPerformed(true);
-  };
 
   const validateBearerToken = () => {
     if (!bearerTokenConfig.apiServer || !bearerTokenConfig.name || !bearerTokenConfig.token) {
@@ -204,6 +222,87 @@ const AddConfig = () => {
     setValidationPerformed(true);
   };
 
+  const updateFileStatus = (filename: string, updates: Partial<FileValidationStatus>) => {
+    setFileValidationStatuses(prev => 
+      prev.map(status => 
+        status.filename === filename 
+          ? { ...status, ...updates }
+          : status
+      )
+    );
+  };
+
+
+
+  const validateSingleFile = async (file: File): Promise<{ file: File; status: 'passed' | 'failed'; content?: string; message: string; error?: string }> => {
+    try {
+      // Update status to validating
+      updateFileStatus(file.name, { status: 'validating', message: 'Reading file...' });
+      
+      const fileContent = await readFileAsText(file);
+      
+      // Update status with file content
+      updateFileStatus(file.name, { 
+        content: fileContent, 
+        message: 'Validating kubeconfig...' 
+      });
+      
+      // Validate the kubeconfig
+      const validateFormData = new FormData();
+      validateFormData.append("file", fileContent);
+      
+      const validateResponse = await fetch(`/api/v1/app/config/validate`, {
+        method: 'POST',
+        body: validateFormData,
+      });
+
+      const validateResult = await validateResponse.json();
+
+      if (validateResponse.ok && validateResult.hasReachableClusters) {
+        // Validation passed
+        updateFileStatus(file.name, {
+          status: 'passed',
+          message: 'Validation passed - clusters reachable'
+        });
+        return {
+          file,
+          status: 'passed',
+          content: fileContent,
+          message: 'Validation passed - clusters reachable'
+        };
+      } else {
+        // Validation failed
+        const errorMessage = validateResult.error || 'Validation failed - no reachable clusters';
+        updateFileStatus(file.name, {
+          status: 'failed',
+          message: errorMessage,
+          error: validateResult.error
+        });
+        return {
+          file,
+          status: 'failed',
+          message: errorMessage,
+          error: validateResult.error
+        };
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Validation failed';
+      updateFileStatus(file.name, {
+        status: 'failed',
+        message: errorMessage,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+      return {
+        file,
+        status: 'failed',
+        message: errorMessage,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  };
+
+
+
   const uploadMultipleKubeconfigs = async () => {
     if (selectedFiles.length === 0) {
       toast.error("No files selected");
@@ -211,126 +310,166 @@ const AddConfig = () => {
     }
 
     setIsUploading(true);
-    setUploadResults([]);
+    setValidationProgress({ total: selectedFiles.length, completed: 0, phase: 'validation' });
 
-    const results: FileUploadResult[] = [];
-    const validFiles: { file: File; content: string }[] = [];
-
-    // Step 1: Validate all kubeconfigs
-    for (const file of selectedFiles) {
-      try {
-        const fileContent = await readFileAsText(file);
-        
-        // Validate the kubeconfig
-        const validateFormData = new FormData();
-        validateFormData.append("file", fileContent);
-        
-        const validateResponse = await fetch(`/api/v1/app/config/validate`, {
-          method: 'POST',
-          body: validateFormData,
-        });
-
-        const validateResult = await validateResponse.json();
-
-        if (validateResponse.ok && validateResult.hasReachableClusters) {
-          // Validation passed, add to valid files list
-          validFiles.push({ file, content: fileContent });
-          results.push({
-            filename: file.name,
-            success: true,
-            message: 'Validation passed',
-            configId: undefined
-          });
-        } else {
-          // Validation failed
-          results.push({
-            filename: file.name,
-            success: false,
-            message: validateResult.error || 'Validation failed - no reachable clusters'
-          });
-        }
-      } catch (error) {
-        results.push({
-          filename: file.name,
-          success: false,
-          message: error instanceof Error ? error.message : 'Validation failed'
-        });
-      }
-    }
-
-    // Step 2: Upload only valid kubeconfigs
-    const uploadResults: FileUploadResult[] = [];
-    
-    for (const { file, content } of validFiles) {
-      try {
-        const formData = new FormData();
-        formData.append("file", content);
-        formData.append("filename", file.name);
-
-        const response = await fetch(`/api/v1/app/config/kubeconfigs`, {
-          method: 'POST',
-          body: formData,
-        });
-
-        const result = await response.json();
-
-        if (response.ok) {
-          uploadResults.push({
-            filename: file.name,
-            success: true,
-            message: result.message || 'Upload successful',
-            configId: result.id
-          });
-        } else {
-          uploadResults.push({
-            filename: file.name,
-            success: false,
-            message: result.error || 'Upload failed'
-          });
-        }
-      } catch (error) {
-        uploadResults.push({
-          filename: file.name,
-          success: false,
-          message: error instanceof Error ? error.message : 'Upload failed'
-        });
-      }
-    }
-
-    // Combine validation and upload results
-    const finalResults = results.map(result => {
-      if (result.success) {
-        // Find corresponding upload result
-        const uploadResult = uploadResults.find(u => u.filename === result.filename);
-        return uploadResult || result;
-      }
-      return result;
+    // Step 1: Validate all kubeconfigs concurrently and collect results
+    const validationPromises = selectedFiles.map(file => {
+      return validateSingleFile(file).finally(() => {
+        setValidationProgress(prev => ({
+          ...prev,
+          completed: prev.completed + 1
+        }));
+      });
     });
 
-    setUploadResults(finalResults);
+    const validationResults = await Promise.all(validationPromises);
+
+    // Separate valid and failed files based on actual results
+    const validFiles = validationResults.filter(result => result.status === 'passed');
+    const failedFiles = validationResults.filter(result => result.status === 'failed');
+
+    // Automatically remove failed files from the list
+    if (failedFiles.length > 0) {
+      const failedFilenames = failedFiles.map(f => f.file.name);
+      setSelectedFiles(prev => prev.filter(file => !failedFilenames.includes(file.name)));
+      setFileValidationStatuses(prev => prev.filter(status => !failedFilenames.includes(status.filename)));
+      
+      toast.error(`${failedFiles.length} kubeconfig${failedFiles.length > 1 ? 's' : ''} failed validation and were removed`);
+    }
+
+    if (validFiles.length === 0) {
+      setIsUploading(false);
+      toast.error("No valid kubeconfigs to upload");
+      return;
+    }
+
+    // Step 2: Upload only valid kubeconfigs concurrently
+    setValidationProgress({ 
+      total: validFiles.length, 
+      completed: 0, 
+      phase: 'upload' 
+    });
+
+    const uploadPromises = validFiles.map(validFile => {
+      return uploadSingleFileFromResult(validFile as { file: File; status: 'passed'; content?: string; message: string }).finally(() => {
+        setValidationProgress(prev => ({
+          ...prev,
+          completed: prev.completed + 1
+        }));
+      });
+    });
+
+    await Promise.all(uploadPromises);
+
+    // Update final progress
+    setValidationProgress(prev => ({ ...prev, phase: 'complete' }));
     setIsUploading(false);
 
-    // Show summary toast
-    const successCount = finalResults.filter(r => r.success).length;
-    const failureCount = finalResults.length - successCount;
-    const validationFailedCount = results.filter(r => !r.success).length;
-
+    // Count successful uploads by checking the current state
+    const successCount = validFiles.length; // All valid files should have been uploaded
+    
     if (successCount > 0) {
       toast.success(`Successfully uploaded ${successCount} kubeconfig${successCount > 1 ? 's' : ''}`);
-      // Close the dialog if any files were uploaded successfully
-      setStatesToDefault(false);
-    }
-    
-    if (validationFailedCount > 0) {
-      toast.error(`${validationFailedCount} kubeconfig${validationFailedCount > 1 ? 's' : ''} failed validation`);
-    }
-    
-    if (failureCount > successCount) {
-      toast.error(`${failureCount - successCount} kubeconfig${failureCount - successCount > 1 ? 's' : ''} failed to upload`);
+      
+      // Auto-close dialog after successful upload
+      setTimeout(() => {
+        setStatesToDefault(false);
+      }, 500); // Close after 0.5 seconds to let user see the success message
     }
 
     // Refresh clusters list
     dispatch(fetchClusters());
+  };
+
+  const uploadSingleFileFromResult = async (validationResult: { file: File; status: 'passed'; content?: string; message: string }): Promise<void> => {
+    if (!validationResult.content) return;
+    
+    try {
+      updateFileStatus(validationResult.file.name, { 
+        status: 'uploading', 
+        message: 'Uploading to server...' 
+      });
+      
+      const formData = new FormData();
+      formData.append("file", validationResult.content);
+      formData.append("filename", validationResult.file.name);
+
+      const response = await fetch(`/api/v1/app/config/kubeconfigs`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        updateFileStatus(validationResult.file.name, {
+          status: 'uploaded',
+          message: result.message || 'Upload successful',
+          configId: result.id
+        });
+      } else {
+        updateFileStatus(validationResult.file.name, {
+          status: 'failed',
+          message: result.error || 'Upload failed',
+          error: result.error
+        });
+      }
+    } catch (error) {
+      updateFileStatus(validationResult.file.name, {
+        status: 'failed',
+        message: error instanceof Error ? error.message : 'Upload failed',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  };
+
+  const uploadSingleKubeconfig = async () => {
+    if (selectedFiles.length !== 1 || !kubeconfigFileConfig.config) {
+      toast.error("No kubeconfig content to upload");
+      return;
+    }
+
+    setIsUploading(true);
+    const file = selectedFiles[0];
+    
+    // Initialize file status
+    setFileValidationStatuses([{
+      filename: file.name,
+      status: 'pending',
+      file: file
+    }]);
+    setValidationProgress({ total: 1, completed: 0, phase: 'validation' });
+
+    try {
+      // Step 1: Validate the kubeconfig
+      const validationResult = await validateSingleFile(file);
+      setValidationProgress({ total: 1, completed: 1, phase: 'validation' });
+
+      if (validationResult.status === 'failed') {
+        setIsUploading(false);
+        toast.error(`Validation failed: ${validationResult.message}`);
+        return;
+      }
+
+      // Step 2: Upload the validated kubeconfig
+      setValidationProgress({ total: 1, completed: 0, phase: 'upload' });
+      await uploadSingleFileFromResult(validationResult as { file: File; status: 'passed'; content?: string; message: string });
+      setValidationProgress({ total: 1, completed: 1, phase: 'complete' });
+
+      setIsUploading(false);
+      toast.success("Successfully uploaded kubeconfig");
+      
+      // Auto-close dialog after successful upload
+      setTimeout(() => {
+        setStatesToDefault(false);
+      }, 500); // Close after 0.5 seconds to let user see the success message
+
+      // Refresh clusters list
+      dispatch(fetchClusters());
+    } catch (error) {
+      setIsUploading(false);
+      toast.error(`Upload failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   };
 
   const readFileAsText = (file: File): Promise<string> => {
@@ -381,20 +520,9 @@ const AddConfig = () => {
       formData.append("name", certificateConfig.name);
       route = KUBECONFIGS_CERTIFICATE_URL;
     } else {
-      // For kubeconfig file, check if validation was performed and clusters are reachable
-      if (!validationPerformed) {
-        toast.error("Please validate the kubeconfig first");
-        return;
-      }
-      
-      if (!validationResponse?.hasReachableClusters) {
-        toast.error("Cannot add kubeconfig: No reachable clusters found");
-        return;
-      }
-
-      formData = new FormData();
-      formData.append("file", kubeconfigFileConfig.config);
-      route = KUBECONFIGS_URL;
+      // This should not be reached for kubeconfig files as they now use the unified upload function
+      toast.error("Please use the Validate & Upload button for kubeconfig files");
+      return;
     }
     dispatch(addConfig({ formData, route }));
   };
@@ -408,7 +536,8 @@ const AddConfig = () => {
     if (activeTab === "certificate") {
       return !certificateConfig.apiServer || !certificateConfig.certificate || !certificateConfig.certificateKey || !certificateConfig.name || checkForValidConfigName(certificateConfig.name) || !validationPerformed || !validationResponse?.hasReachableClusters;
     }
-    return !kubeconfigFileConfig.config || !validationPerformed || !validationResponse?.hasReachableClusters;
+    // Kubeconfig files now use the unified upload function, so this should always be disabled
+    return true;
   };
 
   const checkForValidConfigName = (name: string) => {
@@ -416,44 +545,7 @@ const AddConfig = () => {
     return !regex.test(name);
   };
 
-  const renderClusterStatus = () => {
-    if (!validationPerformed || !validationResponse) return null;
 
-    return (
-      <div className="mt-4 p-3 border rounded-md bg-muted/50">
-        <div className="flex items-center gap-2 mb-2">
-          <span className="text-sm font-medium">Cluster Status:</span>
-          {validationResponse.hasReachableClusters ? (
-            <Badge variant="default" className="bg-green-100 text-green-800 hover:bg-green-100">
-              <CheckCircledIcon className="w-3 h-3 mr-1" />
-              Reachable
-            </Badge>
-          ) : (
-            <Badge variant="destructive">
-              <CrossCircledIcon className="w-3 h-3 mr-1" />
-              Not Reachable
-            </Badge>
-          )}
-        </div>
-                 {validationResponse.clusterStatus && Object.keys(validationResponse.clusterStatus).length > 0 && (
-           <div className="space-y-1">
-             {Object.entries(validationResponse.clusterStatus).map(([contextName, status]) => (
-               <div key={contextName} className="flex items-center gap-2 text-xs">
-                 <span className={cn(
-                   "w-2 h-2 rounded-full",
-                   status.reachable ? "bg-green-500" : "bg-red-500"
-                 )} />
-                 <span>{contextName}</span>
-                 {!status.reachable && status.error && (
-                   <span className="text-red-600">({status.error})</span>
-                 )}
-               </div>
-             ))}
-           </div>
-         )}
-      </div>
-    );
-  };
 
   return (
     <div className="flex items-center space-x-2">
@@ -527,8 +619,6 @@ const AddConfig = () => {
                         Validate
                       </Button>
                     </div>
-                    
-                    {renderClusterStatus()}
                   </TabsContent>
                   <TabsContent value="certificate">
                     <div className="space-y-1">
@@ -589,8 +679,6 @@ const AddConfig = () => {
                         Validate
                       </Button>
                     </div>
-                    
-                    {renderClusterStatus()}
                   </TabsContent>
                   <TabsContent value="kubeconfigFile">
                     <div className="space-y-1">
@@ -630,6 +718,8 @@ const AddConfig = () => {
                               size="sm"
                               onClick={() => {
                                 setSelectedFiles([]);
+                                setFileValidationStatuses([]);
+                                setValidationProgress({ total: 0, completed: 0, phase: 'validation' });
                                 setTextValue('');
                                 setKubeconfigFileConfig({ ...kubeconfigFileConfig, config: '' });
                                 setValidationPerformed(false);
@@ -652,12 +742,24 @@ const AddConfig = () => {
                             Selected {selectedFiles.length} file{selectedFiles.length > 1 ? 's' : ''}:
                           </p>
                           <div className="space-y-1">
-                            {selectedFiles.map((file, index) => (
-                              <div key={index} className="flex items-center gap-2 text-sm">
-                                <span className="text-blue-600">{file.name}</span>
-                                <span className="text-muted-foreground">({(file.size / 1024).toFixed(1)} KB)</span>
-                              </div>
-                            ))}
+                            {selectedFiles.map((file, index) => {
+                              const fileStatus = fileValidationStatuses.find(status => status.filename === file.name);
+                              return (
+                                <div key={index} className="flex items-center gap-2 text-sm">
+                                  <span className="text-blue-600">{file.name}</span>
+                                  <span className="text-muted-foreground">({(file.size / 1024).toFixed(1)} KB)</span>
+                                  {fileStatus && (
+                                    <span className="ml-2">
+                                      {fileStatus.status === 'pending' && '⏳'}
+                                      {fileStatus.status === 'validating' && '🔄'}
+                                      {(fileStatus.status === 'passed' || fileStatus.status === 'uploaded') && '✅'}
+                                      {fileStatus.status === 'failed' && '❌'}
+                                      {fileStatus.status === 'uploading' && '⬆️'}
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
                       )}
@@ -679,32 +781,49 @@ const AddConfig = () => {
                       </div>
                     )}
                     
+                    {selectedFiles.length === 1 && (
+                      <div className="mt-2">
+                        <div className="flex items-center gap-2 text-sm">
+                          <span className="text-blue-600">{selectedFiles[0].name}</span>
+                          <span className="text-muted-foreground">({(selectedFiles[0].size / 1024).toFixed(1)} KB)</span>
+                          {fileValidationStatuses.length > 0 && (
+                            <span className="ml-2">
+                              {fileValidationStatuses[0].status === 'pending' && '⏳'}
+                              {fileValidationStatuses[0].status === 'validating' && '🔄'}
+                              {(fileValidationStatuses[0].status === 'passed' || fileValidationStatuses[0].status === 'uploaded') && '✅'}
+                              {fileValidationStatuses[0].status === 'failed' && '❌'}
+                              {fileValidationStatuses[0].status === 'uploading' && '⬆️'}
+                            </span>
+                          )}
+                        </div>
+                        {fileValidationStatuses.length > 0 && fileValidationStatuses[0].message && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {fileValidationStatuses[0].message}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    
                     {selectedFiles.length === 1 && kubeconfigFileConfig.config && (
-                      <div className="flex items-center gap-2 mt-2">
+                      <div className="mt-4">
                         <Button
                           type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={validateKubeconfig}
-                          disabled={validationLoading}
+                          onClick={uploadSingleKubeconfig}
+                          disabled={isUploading}
+                          className="w-full"
                         >
-                          {validationLoading ? (
+                          {isUploading ? (
                             <>
-                              <ReloadIcon className="w-3 h-3 mr-1 animate-spin" />
-                              Validating...
+                              <ReloadIcon className="w-4 h-4 mr-2 animate-spin" />
+                              Validating & Uploading...
                             </>
                           ) : (
                             <>
-                              <CheckCircledIcon className="w-3 h-3 mr-1" />
-                              Validate Kubeconfig
+                              <ArrowUpIcon className="w-4 h-4 mr-2" />
+                              Validate & Upload Kubeconfig
                             </>
                           )}
                         </Button>
-                        {validationPerformed && validationResponse && (
-                          <span className="text-xs text-muted-foreground">
-                            {validationResponse.hasReachableClusters ? '✓ Valid' : '✗ Invalid'}
-                          </span>
-                        )}
                       </div>
                     )}
                     
@@ -731,50 +850,35 @@ const AddConfig = () => {
                       </div>
                     )}
                     
-                    {uploadResults.length > 0 && (
-                      <div className="mt-4 p-3 border rounded-md bg-muted/50">
-                        <h4 className="text-sm font-medium mb-2">Validation & Upload Results:</h4>
-                        <div className="space-y-2 max-h-40 overflow-y-auto">
-                          {uploadResults.map((result, index) => (
-                            <div key={index} className="flex items-center gap-2 text-sm">
-                              {result.success ? (
-                                <CheckCircledIcon className="w-4 h-4 text-green-600" />
-                              ) : (
-                                <CrossCircledIcon className="w-4 h-4 text-red-600" />
-                              )}
-                              <span className="font-mono text-xs">{result.filename}</span>
-                              <span className={result.success ? "text-green-600" : "text-red-600"}>
-                                {result.message}
-                              </span>
-                              {result.configId && (
-                                <span className="text-xs text-muted-foreground">
-                                  (ID: {result.configId})
-                                </span>
-                              )}
-                            </div>
-                          ))}
+                    {/* Progress indicator during validation/upload */}
+                    {isUploading && validationProgress.total > 0 && (
+                      <div className="mt-4 p-3 border rounded-md bg-blue-50 dark:bg-blue-950/20">
+                        <div className="flex items-center justify-between mb-2">
+                          <h4 className="text-sm font-medium">
+                            {validationProgress.phase === 'validation' ? 
+                              (selectedFiles.length === 1 ? 'Validating Kubeconfig...' : 'Validating Files...') : 
+                             validationProgress.phase === 'upload' ? 
+                              (selectedFiles.length === 1 ? 'Uploading Kubeconfig...' : 'Uploading Files...') : 'Complete'}
+                          </h4>
+                          <span className="text-xs text-muted-foreground">
+                            {validationProgress.completed} / {validationProgress.total}
+                          </span>
                         </div>
-                        <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
-                          <div className="text-xs text-muted-foreground">
-                            {uploadResults.filter(r => r.success).length} of {uploadResults.length} files processed successfully
-                          </div>
+                        <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                          <div 
+                            className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
+                            style={{ width: `${(validationProgress.completed / validationProgress.total) * 100}%` }}
+                          />
                         </div>
                       </div>
                     )}
-                    
-                    {selectedFiles.length === 1 && renderClusterStatus()}
+
                   </TabsContent>
                 </Tabs>
               </div>
             </div>
             <DialogFooter className="sm:flex-col">
-              {activeTab === 'kubeconfigFile' && selectedFiles.length === 1 ? (
-                <Button
-                  type="submit"
-                  onClick={addNewConfig}
-                  disabled={isAddDisabled()}
-                >Save</Button>
-              ) : activeTab !== 'kubeconfigFile' ? (
+              {activeTab !== 'kubeconfigFile' ? (
                 <Button
                   type="submit"
                   onClick={addNewConfig}
