@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ChevronDownIcon, ChevronRightIcon, MagnifyingGlassIcon } from "@radix-ui/react-icons";
-import { memo, useState, useMemo, useCallback, useRef, useEffect } from "react";
+import React, { memo, useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { FixedSizeList } from "react-window";
 import { cn } from "@/lib/utils";
 import { OptimizedDependencyCard, type DependencyResource } from "./OptimizedDependencyCard";
@@ -78,7 +78,7 @@ const VirtualizedResourceList = memo<VirtualizedResourceListProps>(function Virt
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
-  const listRef = useRef<FixedSizeList>(null);
+  const listRef = useRef<FixedSizeList<any>>(null);
 
   const filteredResources = useMemo(() => {
     if (!debouncedSearchQuery.trim()) return resources;
@@ -212,17 +212,16 @@ const VirtualizedResourceList = memo<VirtualizedResourceListProps>(function Virt
               </div>
             ) : shouldVirtualize ? (
               <div className="border border-border/30 rounded-lg overflow-hidden virtual-list-container">
-                <FixedSizeList
-                  ref={listRef}
-                  height={listHeight}
-                  width="100%"
-                  itemCount={filteredResources.length}
-                  itemSize={itemHeight}
-                  itemData={itemData}
-                  className="scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent"
-                >
-                  {VirtualItem}
-                </FixedSizeList>
+                {React.createElement(FixedSizeList as any, {
+                  ref: listRef,
+                  height: listHeight,
+                  width: "100%",
+                  itemCount: filteredResources.length,
+                  itemSize: itemHeight,
+                  itemData: itemData,
+                  className: "scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent",
+                  children: VirtualItem
+                })}
               </div>
             ) : (
               <div className="space-y-2 dependency-list-container">
