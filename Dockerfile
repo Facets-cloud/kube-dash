@@ -7,13 +7,13 @@ WORKDIR /app/client
 COPY client/package*.json ./
 
 # Install dependencies with Rollup native binaries disabled
-RUN ROLLUP_SKIP_NATIVE=true yarn install --frozen-lockfile
+RUN yarn install
 
 # Copy source code
 COPY client/ ./
 
 # Build the frontend with environment variable to disable native binaries
-RUN ROLLUP_SKIP_NATIVE=true yarn build
+RUN yarn build
 
 # Stage 2: Build the Go backend
 FROM golang:1.24-alpine AS backend-builder
