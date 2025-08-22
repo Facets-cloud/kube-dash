@@ -590,6 +590,7 @@ func (s *Server) setupRoutes() {
 		api.GET("/cronjobs/:namespace/:name/events", s.cronJobsHandler.GetCronJobEvents)
 		api.GET("/cronjobs/:namespace/:name/jobs", s.resourceReferencesHandler.GetCronJobJobs)
 		api.POST("/cronjobs/:namespace/:name/trigger", s.cronJobsHandler.TriggerCronJob)
+		api.PATCH("/cronjobs/:namespace/:name/suspend", s.cronJobsHandler.SuspendCronJob)
 		api.GET("/cronjob/:name", s.cronJobsHandler.GetCronJobByName)
 		api.GET("/cronjob/:name/yaml", s.cronJobsHandler.GetCronJobYAMLByName)
 		api.GET("/cronjob/:name/events", s.cronJobsHandler.GetCronJobEventsByName)
