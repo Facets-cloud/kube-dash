@@ -682,10 +682,12 @@ func (s *Server) setupRoutes() {
 		api.GET("/persistentvolumeclaims/:namespace/:name", s.persistentVolumeClaimsHandler.GetPVC)
 		api.GET("/persistentvolumeclaims/:namespace/:name/yaml", s.persistentVolumeClaimsHandler.GetPVCYAML)
 		api.GET("/persistentvolumeclaims/:namespace/:name/events", s.persistentVolumeClaimsHandler.GetPVCEvents)
+		api.GET("/persistentvolumeclaims/:namespace/:name/pods", s.persistentVolumeClaimsHandler.GetPVCPods)
 		api.PATCH("/persistentvolumeclaims/:namespace/:name/scale", s.persistentVolumeClaimsHandler.ScalePVC)
 		api.GET("/persistentvolumeclaim/:name", s.persistentVolumeClaimsHandler.GetPVCByName)
 		api.GET("/persistentvolumeclaim/:name/yaml", s.persistentVolumeClaimsHandler.GetPVCYAMLByName)
 		api.GET("/persistentvolumeclaim/:name/events", s.persistentVolumeClaimsHandler.GetPVCEventsByName)
+		api.GET("/persistentvolumeclaim/:name/pods", s.persistentVolumeClaimsHandler.GetPVCPodsByName)
 
 		api.GET("/storageclasses/:name", s.storageClassesHandler.GetStorageClass)
 		api.GET("/storageclasses/:name/yaml", s.storageClassesHandler.GetStorageClassYAML)
