@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/Facets-cloud/kube-dash/internal/api/transformers"
 	"github.com/Facets-cloud/kube-dash/internal/api/utils"
 	"github.com/Facets-cloud/kube-dash/internal/k8s"
 	"github.com/Facets-cloud/kube-dash/internal/storage"
@@ -11,8 +12,8 @@ import (
 	"github.com/Facets-cloud/kube-dash/pkg/logger"
 
 	"github.com/gin-gonic/gin"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // LeasesHandler handles lease-related operations
@@ -106,7 +107,13 @@ func (h *LeasesHandler) GetLeases(c *gin.Context) {
 	h.tracingHelper.RecordSuccess(apiSpan, "Successfully listed leases")
 	h.tracingHelper.AddResourceAttributes(apiSpan, namespace, "leases", len(leases.Items))
 
-	c.JSON(http.StatusOK, leases)
+	// Transform leases to frontend format
+	transformedLeases := make([]interface{}, len(leases.Items))
+	for i, lease := range leases.Items {
+		transformedLeases[i] = transformers.TransformLeaseToResponse(&lease)
+	}
+
+	c.JSON(http.StatusOK, transformedLeases)
 }
 
 // GetLeasesSSE returns leases as Server-Sent Events with real-time updates
@@ -147,7 +154,12 @@ func (h *LeasesHandler) GetLeasesSSE(c *gin.Context) {
 		if err != nil {
 			return nil, err
 		}
-		return leaseList.Items, nil
+		// Transform leases to frontend format
+		transformedLeases := make([]interface{}, len(leaseList.Items))
+		for i, lease := range leaseList.Items {
+			transformedLeases[i] = transformers.TransformLeaseToResponse(&lease)
+		}
+		return transformedLeases, nil
 	}
 
 	// Get initial data

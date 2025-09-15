@@ -6,6 +6,7 @@ import (
 	"github.com/Facets-cloud/kube-dash/internal/api/types"
 
 	autoscalingV2 "k8s.io/api/autoscaling/v2"
+	coordinationV1 "k8s.io/api/coordination/v1"
 	v1 "k8s.io/api/core/v1"
 	nodeV1 "k8s.io/api/node/v1"
 	policyV1 "k8s.io/api/policy/v1"
@@ -224,5 +225,32 @@ func TransformRuntimeClassToResponse(runtimeClass *nodeV1.RuntimeClass) types.Ru
 		Name:       runtimeClass.Name,
 		UID:        string(runtimeClass.UID),
 		Handler:    runtimeClass.Handler,
+	}
+}
+
+// TransformLeaseToResponse transforms a Lease to the frontend response format
+func TransformLeaseToResponse(lease *coordinationV1.Lease) types.LeaseListResponse {
+	age := ""
+	if !lease.CreationTimestamp.IsZero() {
+		age = lease.CreationTimestamp.Time.Format(time.RFC3339)
+	}
+
+	holderIdentity := ""
+	leaseDurationSeconds := int32(0)
+	if lease.Spec.HolderIdentity != nil {
+		holderIdentity = *lease.Spec.HolderIdentity
+	}
+	if lease.Spec.LeaseDurationSeconds != nil {
+		leaseDurationSeconds = *lease.Spec.LeaseDurationSeconds
+	}
+
+	return types.LeaseListResponse{
+		Age:                  age,
+		HasUpdated:          false,
+		Name:                lease.Name,
+		Namespace:           lease.Namespace,
+		UID:                 string(lease.UID),
+		HolderIdentity:      holderIdentity,
+		LeaseDurationSeconds: leaseDurationSeconds,
 	}
 }

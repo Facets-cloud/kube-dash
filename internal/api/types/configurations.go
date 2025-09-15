@@ -99,3 +99,14 @@ type RuntimeClassListResponse struct {
 	UID        string `json:"uid"`
 	Handler    string `json:"handler"`
 }
+
+// LeaseListResponse represents the response format expected by the frontend for leases
+type LeaseListResponse struct {
+	Age                  string `json:"age"`
+	HasUpdated          bool   `json:"hasUpdated"`
+	Name                string `json:"name"`
+	Namespace           string `json:"namespace"`
+	UID                 string `json:"uid"`
+	HolderIdentity      string `json:"holderIdentity"`
+	LeaseDurationSeconds int32  `json:"leaseDurationSeconds"`
+}
