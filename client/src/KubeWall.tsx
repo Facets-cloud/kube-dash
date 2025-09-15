@@ -26,7 +26,7 @@ export function KubeWall() {
   } = useAppSelector((state) => state.clusters);
 
   useEffect(() => {
-    if (!clusters.kubeConfigs) {
+    if (!clusters.kubeConfigs || Object.keys(clusters.kubeConfigs).length === 0) {
       dispatch(fetchClusters());
     }
   }, [clusters, dispatch]);
