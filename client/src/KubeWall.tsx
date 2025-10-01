@@ -16,6 +16,7 @@ export function KubeWall() {
   const dispatch = useAppDispatch();
   const pathname = router.location.pathname;
   const hasShownConfigNotFoundToast = useRef(false);
+  const hasFetchedClusters = useRef(false);
 
   const configName = router.location.pathname.split('/')[1];
   const clusterName = new URL(location.href).searchParams.get('cluster') || '';
@@ -26,10 +27,11 @@ export function KubeWall() {
   } = useAppSelector((state) => state.clusters);
 
   useEffect(() => {
-    if (!clusters.kubeConfigs || Object.keys(clusters.kubeConfigs).length === 0) {
+    if (!hasFetchedClusters.current && !clustersLoading && (!clusters.kubeConfigs || Object.keys(clusters.kubeConfigs).length === 0)) {
+      hasFetchedClusters.current = true;
       dispatch(fetchClusters());
     }
-  }, [clusters, dispatch]);
+  }, [dispatch, clustersLoading]);
 
   // Check if current route's config exists and redirect if it doesn't
   useEffect(() => {

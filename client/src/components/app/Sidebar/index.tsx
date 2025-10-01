@@ -41,7 +41,8 @@ const Sidebar = memo(function ({ className }: SidebarProps) {
   const queryParams = new URLSearchParams(router.location.search);
   const clusterName = queryParams.get('cluster') || '';
   const {
-    clusters
+    clusters,
+    loading: clustersLoading
   } = useAppSelector((state) => state.clusters);
   const {
     customResourcesNavigation
@@ -146,10 +147,10 @@ const Sidebar = memo(function ({ className }: SidebarProps) {
   };
 
   useEffect(() => {
-    if (!clusters.kubeConfigs) {
+    if (!clustersLoading && !clusters.kubeConfigs) {
       dispatch(fetchClusters());
     }
-  }, [clusters, dispatch]);
+  }, [dispatch, clustersLoading]);
 
   const getResourceIcon = (resourceType: string) => {
     switch (resourceType) {
