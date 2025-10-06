@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import { usePodLogsWebSocket, LogMessage } from '@/hooks/usePodLogsWebSocket';
 import { cn } from '@/lib/utils';
+import { PodDetails } from '@/types';
 
 interface PodLogsViewerProps {
   podName: string;
@@ -39,6 +40,7 @@ interface PodLogsViewerProps {
   container?: string;
   allContainers?: boolean;
   className?: string;
+  podDetails?: PodDetails;
 }
 
 interface LogEntry extends LogMessage {
@@ -231,6 +233,7 @@ export const PodLogsViewer: React.FC<PodLogsViewerProps> = ({
   container,
   allContainers = false,
   className,
+  podDetails,
 }) => {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [showTimestamps, setShowTimestamps] = useState(true);
@@ -243,6 +246,31 @@ export const PodLogsViewer: React.FC<PodLogsViewerProps> = ({
   const [selectedContainer, setSelectedContainer] = useState<string>('all');
   const [searchMode, setSearchMode] = useState<'simple' | 'regex' | 'grep'>('simple');
   const [caseSensitive, setCaseSensitive] = useState(false);
+
+  // Get all containers from pod spec (containers + initContainers + ephemeralContainers)
+  const allPodContainers = React.useMemo(() => {
+    if (!podDetails?.spec) return [];
+
+    const containers: string[] = [];
+
+    // Add regular containers
+    if (podDetails.spec.containers) {
+      containers.push(...podDetails.spec.containers.map(c => c.name));
+    }
+
+    // Add init containers
+    if (podDetails.spec.initContainers) {
+      containers.push(...podDetails.spec.initContainers.map(c => c.name));
+    }
+
+    // Add ephemeral containers (for debugging)
+    if ((podDetails.spec as any).ephemeralContainers) {
+      containers.push(...(podDetails.spec as any).ephemeralContainers.map((c: any) => c.name));
+    }
+
+    return containers;
+  }, [podDetails]);
+
   const [availableContainers, setAvailableContainers] = useState<string[]>([]);
   
   // New state variables for enhanced functionality
@@ -302,6 +330,10 @@ export const PodLogsViewer: React.FC<PodLogsViewerProps> = ({
 
   
   // WebSocket connection
+  // If a specific container is selected from dropdown, use that; otherwise use the prop or all containers
+  const effectiveContainer = selectedContainer && selectedContainer !== 'all' ? selectedContainer : container;
+  const effectiveAllContainers = selectedContainer === 'all' || (!selectedContainer && allContainers);
+
   const {
     isConnected,
     isConnecting,
@@ -311,8 +343,8 @@ export const PodLogsViewer: React.FC<PodLogsViewerProps> = ({
     namespace,
     configName,
     clusterName,
-    container,
-    allContainers,
+    container: effectiveContainer,
+    allContainers: effectiveAllContainers,
     tailLines: logMode === 'tail' ? maxLines : undefined,
     previous: includePrevious,
     allLogs: logMode === 'all',
@@ -331,13 +363,14 @@ export const PodLogsViewer: React.FC<PodLogsViewerProps> = ({
         noPreviousLogsTimeoutRef.current = null;
       }
       
-      // Update available containers
+      // Update available containers by merging with containers from pod spec
       if (logEntry.container) {
         setAvailableContainers(prev => {
-          if (!prev.includes(logEntry.container!)) {
-            return [...prev, logEntry.container!].sort();
+          const merged = new Set([...allPodContainers, ...prev]);
+          if (!merged.has(logEntry.container!)) {
+            merged.add(logEntry.container!);
           }
-          return prev;
+          return Array.from(merged).sort();
         });
       }
       
@@ -466,6 +499,21 @@ export const PodLogsViewer: React.FC<PodLogsViewerProps> = ({
     }
   }, [filteredLogs, autoScroll, scrollToBottom]);
   
+  // Initialize available containers from pod spec
+  useEffect(() => {
+    if (allPodContainers.length > 0) {
+      setAvailableContainers(allPodContainers);
+    }
+  }, [allPodContainers]);
+
+  // Clear logs when container selection changes (to avoid showing stale logs)
+  useEffect(() => {
+    setLogs([]);
+    setSearchResults([]);
+    setCurrentSearchIndex(-1);
+    setHasReceivedLogs(false);
+  }, [selectedContainer]);
+
   // Cleanup timeout on unmount
   useEffect(() => {
     return () => {

@@ -327,6 +327,7 @@ const KwDetails = () => {
                         configName={config}
                         clusterName={cluster}
                         namespace={podDetails?.metadata?.namespace}
+                        podDetails={podDetails}
                       />
                     </TabsContent>
                   }
