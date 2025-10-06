@@ -59,6 +59,7 @@ help: ## Show this help message
 	@echo "  make build-windows            # Build for Windows"
 	@echo "  make run                      # Run the server"
 	@echo "  make dev                      # Run in development mode"
+	@echo "  make swagger                  # Generate Swagger documentation"
 
 # Check dependencies
 .PHONY: check-deps
@@ -315,4 +316,38 @@ install-tools: ## Install development tools
 		echo "Installing golangci-lint..."; \
 		go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest; \
 	fi
-	@echo "$(GREEN)✓$(NC) Development tools installed" 
+	@echo "$(GREEN)✓$(NC) Development tools installed"
+
+# Swagger documentation targets
+.PHONY: swagger-install
+swagger-install: ## Install swag CLI tool for generating Swagger docs
+	@echo "$(BLUE)Installing swag CLI tool...$(NC)"
+	@if ! command -v swag >/dev/null 2>&1; then \
+		echo "Installing swag..."; \
+		go install github.com/swaggo/swag/cmd/swag@latest; \
+		echo "$(GREEN)✓$(NC) swag CLI tool installed"; \
+	else \
+		echo "$(GREEN)✓$(NC) swag CLI tool already installed"; \
+	fi
+
+.PHONY: swagger
+swagger: ## Generate Swagger documentation
+	@echo "$(BLUE)Generating Swagger documentation...$(NC)"
+	@if ! command -v swag >/dev/null 2>&1; then \
+		echo "$(YELLOW)swag CLI tool not found. Installing...$(NC)"; \
+		$(MAKE) swagger-install; \
+	fi
+	@echo "$(BLUE)Running swag init...$(NC)"
+	swag init -g cmd/server/main.go --output docs --parseDependency --parseInternal
+	@echo "$(GREEN)✓$(NC) Swagger documentation generated in docs/ directory"
+	@echo "$(CYAN)Swagger UI available at: http://localhost:7080/swagger/index.html$(NC)"
+
+.PHONY: swagger-fmt
+swagger-fmt: ## Format Swagger comments
+	@echo "$(BLUE)Formatting Swagger comments...$(NC)"
+	@if ! command -v swag >/dev/null 2>&1; then \
+		echo "$(YELLOW)swag CLI tool not found. Installing...$(NC)"; \
+		$(MAKE) swagger-install; \
+	fi
+	swag fmt -g cmd/server/main.go
+	@echo "$(GREEN)✓$(NC) Swagger comments formatted" 

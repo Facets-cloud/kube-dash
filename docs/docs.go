@@ -1000,7 +1000,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/types.ConfigMapListResponse"
+                                "$ref": "#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.ConfigMapListResponse"
                             }
                         }
                     },
@@ -1075,7 +1075,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/types.ConfigMapListResponse"
+                                "$ref": "#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.ConfigMapListResponse"
                             }
                         }
                     },
@@ -1979,7 +1979,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/types.CronJobListResponse"
+                                "$ref": "#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.CronJobListResponse"
                             }
                         }
                     },
@@ -3569,7 +3569,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/types.PodListResponse"
+                                "$ref": "#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.PodListResponse"
                             }
                         }
                     },
@@ -3801,7 +3801,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/types.DaemonSetListResponse"
+                                "$ref": "#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.DaemonSetListResponse"
                             }
                         }
                     },
@@ -4041,7 +4041,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/types.PodListResponse"
+                                "$ref": "#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.PodListResponse"
                             }
                         }
                     },
@@ -4700,7 +4700,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/types.DeploymentListResponse"
+                                "$ref": "#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.DeploymentListResponse"
                             }
                         }
                     },
@@ -5234,7 +5234,7 @@ const docTemplate = `{
                     "200": {
                         "description": "Feature flags configuration",
                         "schema": {
-                            "$ref": "#/definitions/handlers.FeatureFlagsResponse"
+                            "$ref": "#/definitions/internal_api_handlers.FeatureFlagsResponse"
                         }
                     },
                     "500": {
@@ -5376,7 +5376,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/types.HelmReleaseResponse"
+                                "$ref": "#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.HelmReleaseResponse"
                             }
                         }
                     },
@@ -5538,7 +5538,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/types.HPAListResponse"
+                                "$ref": "#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.HPAListResponse"
                             }
                         }
                     },
@@ -5613,7 +5613,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/types.HPAListResponse"
+                                "$ref": "#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.HPAListResponse"
                             }
                         }
                     },
@@ -6396,7 +6396,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/types.IngressListResponse"
+                                "$ref": "#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.IngressListResponse"
                             }
                         }
                     },
@@ -6892,7 +6892,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/types.PodListResponse"
+                                "$ref": "#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.PodListResponse"
                             }
                         }
                     },
@@ -7062,7 +7062,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/types.JobListResponse"
+                                "$ref": "#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.JobListResponse"
                             }
                         }
                     },
@@ -8179,7 +8179,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/types.PodListResponse"
+                                "$ref": "#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.PodListResponse"
                             }
                         }
                     },
@@ -8336,7 +8336,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/cluster.NodeListResponse"
+                                "$ref": "#/definitions/internal_api_handlers_cluster.NodeListResponse"
                             }
                         }
                     },
@@ -8666,7 +8666,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/cluster.NodeActionRequest"
+                            "$ref": "#/definitions/internal_api_handlers_cluster.NodeActionRequest"
                         }
                     }
                 ],
@@ -8850,7 +8850,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/types.PodListResponse"
+                                "$ref": "#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.PodListResponse"
                             }
                         }
                     },
@@ -9092,7 +9092,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/types.PersistentVolumeClaimListResponse"
+                                "$ref": "#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.PersistentVolumeClaimListResponse"
                             }
                         }
                     },
@@ -9156,7 +9156,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/types.PersistentVolumeListResponse"
+                                "$ref": "#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.PersistentVolumeListResponse"
                             }
                         }
                     },
@@ -9452,7 +9452,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/types.PodDisruptionBudgetListResponse"
+                                "$ref": "#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.PodDisruptionBudgetListResponse"
                             }
                         }
                     },
@@ -9527,7 +9527,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/types.PodDisruptionBudgetListResponse"
+                                "$ref": "#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.PodDisruptionBudgetListResponse"
                             }
                         }
                     },
@@ -9695,7 +9695,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/types.PodListResponse"
+                                "$ref": "#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.PodListResponse"
                             }
                         }
                     },
@@ -9787,6 +9787,93 @@ const docTemplate = `{
                         "description": "WebSocket connection established",
                         "schema": {
                             "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Pod not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/pods/{namespace}/{name}/restarts": {
+            "get": {
+                "security": [
+                    {
+                        "KubeConfig": []
+                    }
+                ],
+                "description": "Get detailed restart and termination information for all containers in a pod",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Workloads"
+                ],
+                "summary": "Get Pod Container Restart Information",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Namespace name",
+                        "name": "namespace",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Pod name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Kubernetes configuration ID",
+                        "name": "config",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster name",
+                        "name": "cluster",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Container restart information",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/internal_api_handlers_workloads.ContainerRestartInfo"
+                            }
                         }
                     },
                     "400": {
@@ -10244,7 +10331,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/types.PodListResponse"
+                                "$ref": "#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.PodListResponse"
                             }
                         }
                     },
@@ -10414,7 +10501,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/types.ReplicaSetListResponse"
+                                "$ref": "#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.ReplicaSetListResponse"
                             }
                         }
                     },
@@ -10676,7 +10763,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/types.PodListResponse"
+                                "$ref": "#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.PodListResponse"
                             }
                         }
                     },
@@ -10846,7 +10933,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/types.SecretListResponse"
+                                "$ref": "#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.SecretListResponse"
                             }
                         }
                     },
@@ -10921,7 +11008,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/types.SecretListResponse"
+                                "$ref": "#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.SecretListResponse"
                             }
                         }
                     },
@@ -11477,7 +11564,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/types.ServiceAccountListResponse"
+                                "$ref": "#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.ServiceAccountListResponse"
                             }
                         }
                     },
@@ -11935,7 +12022,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/types.ServiceListResponse"
+                                "$ref": "#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.ServiceListResponse"
                             }
                         }
                     },
@@ -12166,7 +12253,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/types.PodListResponse"
+                                "$ref": "#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.PodListResponse"
                             }
                         }
                     },
@@ -12498,7 +12585,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/types.StatefulSetListResponse"
+                                "$ref": "#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.StatefulSetListResponse"
                             }
                         }
                     },
@@ -12738,7 +12825,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/types.PodListResponse"
+                                "$ref": "#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.PodListResponse"
                             }
                         }
                     },
@@ -13105,7 +13192,7 @@ const docTemplate = `{
                     "200": {
                         "description": "Tracing configuration",
                         "schema": {
-                            "$ref": "#/definitions/config.TracingConfig"
+                            "$ref": "#/definitions/github_com_Facets-cloud_kube-dash_internal_config.TracingConfig"
                         }
                     }
                 }
@@ -13134,7 +13221,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/config.TracingConfig"
+                            "$ref": "#/definitions/github_com_Facets-cloud_kube-dash_internal_config.TracingConfig"
                         }
                     }
                 ],
@@ -13142,7 +13229,7 @@ const docTemplate = `{
                     "200": {
                         "description": "Updated tracing configuration",
                         "schema": {
-                            "$ref": "#/definitions/config.TracingConfig"
+                            "$ref": "#/definitions/github_com_Facets-cloud_kube-dash_internal_config.TracingConfig"
                         }
                     },
                     "400": {
@@ -13221,7 +13308,798 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "cluster.NodeActionRequest": {
+        "github_com_Facets-cloud_kube-dash_internal_api_types.Condition": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Facets-cloud_kube-dash_internal_api_types.ConfigMapListResponse": {
+            "type": "object",
+            "properties": {
+                "age": {
+                    "type": "string"
+                },
+                "hasUpdated": {
+                    "type": "boolean"
+                },
+                "keys": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "namespace": {
+                    "type": "string"
+                },
+                "uid": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Facets-cloud_kube-dash_internal_api_types.CronJobListResponse": {
+            "type": "object",
+            "properties": {
+                "age": {
+                    "type": "string"
+                },
+                "hasUpdated": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "namespace": {
+                    "type": "string"
+                },
+                "spec": {
+                    "type": "object",
+                    "properties": {
+                        "concurrencyPolicy": {
+                            "type": "string"
+                        },
+                        "failedJobsHistoryLimit": {
+                            "type": "integer"
+                        },
+                        "schedule": {
+                            "type": "string"
+                        },
+                        "successfulJobsHistoryLimit": {
+                            "type": "integer"
+                        },
+                        "suspend": {
+                            "type": "boolean"
+                        }
+                    }
+                },
+                "status": {
+                    "type": "object",
+                    "properties": {
+                        "active": {
+                            "type": "integer"
+                        },
+                        "lastScheduleTime": {
+                            "type": "string"
+                        },
+                        "lastSuccessfulTime": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "uid": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Facets-cloud_kube-dash_internal_api_types.DaemonSetListResponse": {
+            "type": "object",
+            "properties": {
+                "age": {
+                    "type": "string"
+                },
+                "hasUpdated": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "namespace": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "object",
+                    "properties": {
+                        "currentNumberScheduled": {
+                            "type": "integer"
+                        },
+                        "desiredNumberScheduled": {
+                            "type": "integer"
+                        },
+                        "numberAvailable": {
+                            "type": "integer"
+                        },
+                        "numberMisscheduled": {
+                            "type": "integer"
+                        },
+                        "numberReady": {
+                            "type": "integer"
+                        },
+                        "observedGeneration": {
+                            "type": "integer"
+                        },
+                        "updatedNumberScheduled": {
+                            "type": "integer"
+                        }
+                    }
+                },
+                "uid": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Facets-cloud_kube-dash_internal_api_types.DeploymentListResponse": {
+            "type": "object",
+            "properties": {
+                "age": {
+                    "type": "string"
+                },
+                "hasUpdated": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "namespace": {
+                    "type": "string"
+                },
+                "replicas": {
+                    "type": "string"
+                },
+                "spec": {
+                    "type": "object",
+                    "properties": {
+                        "replicas": {
+                            "type": "integer"
+                        }
+                    }
+                },
+                "status": {
+                    "type": "object",
+                    "properties": {
+                        "availableReplicas": {
+                            "type": "integer"
+                        },
+                        "conditions": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.Condition"
+                            }
+                        },
+                        "observedGeneration": {
+                            "type": "integer"
+                        },
+                        "readyReplicas": {
+                            "type": "integer"
+                        },
+                        "replicas": {
+                            "type": "integer"
+                        },
+                        "updatedReplicas": {
+                            "type": "integer"
+                        }
+                    }
+                },
+                "uid": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Facets-cloud_kube-dash_internal_api_types.HPAListResponse": {
+            "type": "object",
+            "properties": {
+                "age": {
+                    "type": "string"
+                },
+                "hasUpdated": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "namespace": {
+                    "type": "string"
+                },
+                "spec": {
+                    "type": "object",
+                    "properties": {
+                        "maxPods": {
+                            "type": "integer"
+                        },
+                        "minPods": {
+                            "type": "integer"
+                        }
+                    }
+                },
+                "uid": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Facets-cloud_kube-dash_internal_api_types.HelmReleaseResponse": {
+            "type": "object",
+            "properties": {
+                "age": {
+                    "type": "string"
+                },
+                "chart": {
+                    "type": "string"
+                },
+                "hasUpdated": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "namespace": {
+                    "type": "string"
+                },
+                "revision": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "uid": {
+                    "type": "string"
+                },
+                "updated": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Facets-cloud_kube-dash_internal_api_types.IngressListResponse": {
+            "type": "object",
+            "properties": {
+                "age": {
+                    "type": "string"
+                },
+                "hasUpdated": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "namespace": {
+                    "type": "string"
+                },
+                "spec": {
+                    "type": "object",
+                    "properties": {
+                        "rules": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                },
+                "uid": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Facets-cloud_kube-dash_internal_api_types.JobListResponse": {
+            "type": "object",
+            "properties": {
+                "age": {
+                    "type": "string"
+                },
+                "hasUpdated": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "namespace": {
+                    "type": "string"
+                },
+                "spec": {
+                    "type": "object",
+                    "properties": {
+                        "backoffLimit": {
+                            "type": "integer"
+                        },
+                        "completionMode": {
+                            "type": "string"
+                        },
+                        "completions": {
+                            "type": "integer"
+                        },
+                        "suspend": {
+                            "type": "boolean"
+                        }
+                    }
+                },
+                "status": {
+                    "type": "object",
+                    "properties": {
+                        "active": {
+                            "type": "integer"
+                        },
+                        "conditions": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.Condition"
+                            }
+                        },
+                        "failed": {
+                            "type": "integer"
+                        },
+                        "ready": {
+                            "type": "integer"
+                        },
+                        "startTime": {
+                            "type": "string"
+                        },
+                        "succeeded": {
+                            "type": "integer"
+                        }
+                    }
+                },
+                "uid": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Facets-cloud_kube-dash_internal_api_types.PersistentVolumeClaimListResponse": {
+            "type": "object",
+            "properties": {
+                "age": {
+                    "type": "string"
+                },
+                "hasUpdated": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "namespace": {
+                    "type": "string"
+                },
+                "spec": {
+                    "type": "object",
+                    "properties": {
+                        "accessModes": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        },
+                        "resources": {
+                            "type": "object",
+                            "properties": {
+                                "limits": {
+                                    "type": "object",
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    }
+                                },
+                                "requests": {
+                                    "type": "object",
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    }
+                                }
+                            }
+                        },
+                        "storageClassName": {
+                            "type": "string"
+                        },
+                        "volumeMode": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "status": {
+                    "type": "object",
+                    "properties": {
+                        "phase": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "uid": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Facets-cloud_kube-dash_internal_api_types.PersistentVolumeListResponse": {
+            "type": "object",
+            "properties": {
+                "age": {
+                    "type": "string"
+                },
+                "hasUpdated": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "spec": {
+                    "type": "object",
+                    "properties": {
+                        "accessModes": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        },
+                        "capacity": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        },
+                        "storageClassName": {
+                            "type": "string"
+                        },
+                        "volumeMode": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "status": {
+                    "type": "object",
+                    "properties": {
+                        "phase": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "uid": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Facets-cloud_kube-dash_internal_api_types.PodDisruptionBudgetListResponse": {
+            "type": "object",
+            "properties": {
+                "age": {
+                    "type": "string"
+                },
+                "hasUpdated": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "namespace": {
+                    "type": "string"
+                },
+                "spec": {
+                    "type": "object",
+                    "properties": {
+                        "maxUnavailable": {
+                            "type": "string"
+                        },
+                        "minAvailable": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "status": {
+                    "type": "object",
+                    "properties": {
+                        "currentHealthy": {
+                            "type": "integer"
+                        },
+                        "desiredHealthy": {
+                            "type": "integer"
+                        },
+                        "disruptionsAllowed": {
+                            "type": "integer"
+                        },
+                        "expectedPods": {
+                            "type": "integer"
+                        }
+                    }
+                },
+                "uid": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Facets-cloud_kube-dash_internal_api_types.PodListResponse": {
+            "type": "object",
+            "properties": {
+                "age": {
+                    "type": "string"
+                },
+                "clusterName": {
+                    "type": "string"
+                },
+                "configName": {
+                    "type": "string"
+                },
+                "cpu": {
+                    "type": "string"
+                },
+                "hasUpdated": {
+                    "type": "boolean"
+                },
+                "lastRestartAt": {
+                    "type": "string"
+                },
+                "lastRestartReason": {
+                    "type": "string"
+                },
+                "memory": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "namespace": {
+                    "type": "string"
+                },
+                "node": {
+                    "type": "string"
+                },
+                "podIP": {
+                    "type": "string"
+                },
+                "qos": {
+                    "type": "string"
+                },
+                "ready": {
+                    "type": "string"
+                },
+                "restarts": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "uid": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Facets-cloud_kube-dash_internal_api_types.ReplicaSetListResponse": {
+            "type": "object",
+            "properties": {
+                "age": {
+                    "type": "string"
+                },
+                "hasUpdated": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "namespace": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "object",
+                    "properties": {
+                        "availableReplicas": {
+                            "type": "integer"
+                        },
+                        "fullyLabeledReplicas": {
+                            "type": "integer"
+                        },
+                        "observedGeneration": {
+                            "type": "integer"
+                        },
+                        "readyReplicas": {
+                            "type": "integer"
+                        },
+                        "replicas": {
+                            "type": "integer"
+                        }
+                    }
+                },
+                "uid": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Facets-cloud_kube-dash_internal_api_types.SecretListResponse": {
+            "type": "object",
+            "properties": {
+                "age": {
+                    "type": "string"
+                },
+                "hasUpdated": {
+                    "type": "boolean"
+                },
+                "keys": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "namespace": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                },
+                "uid": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Facets-cloud_kube-dash_internal_api_types.ServiceAccountListResponse": {
+            "type": "object",
+            "properties": {
+                "age": {
+                    "type": "string"
+                },
+                "hasUpdated": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "namespace": {
+                    "type": "string"
+                },
+                "spec": {
+                    "type": "object",
+                    "properties": {
+                        "secrets": {
+                            "type": "integer"
+                        }
+                    }
+                },
+                "uid": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Facets-cloud_kube-dash_internal_api_types.ServiceListResponse": {
+            "type": "object",
+            "properties": {
+                "age": {
+                    "type": "string"
+                },
+                "hasUpdated": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "namespace": {
+                    "type": "string"
+                },
+                "spec": {
+                    "type": "object",
+                    "properties": {
+                        "clusterIP": {
+                            "type": "string"
+                        },
+                        "externalIPs": {
+                            "type": "string"
+                        },
+                        "internalTrafficPolicy": {
+                            "type": "string"
+                        },
+                        "ipFamilyPolicy": {
+                            "type": "string"
+                        },
+                        "ports": {
+                            "type": "string"
+                        },
+                        "sessionAffinity": {
+                            "type": "string"
+                        },
+                        "type": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "uid": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Facets-cloud_kube-dash_internal_api_types.StatefulSetListResponse": {
+            "type": "object",
+            "properties": {
+                "age": {
+                    "type": "string"
+                },
+                "hasUpdated": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "namespace": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "object",
+                    "properties": {
+                        "availableReplicas": {
+                            "type": "integer"
+                        },
+                        "fullyLabeledReplicas": {
+                            "type": "integer"
+                        },
+                        "observedGeneration": {
+                            "type": "integer"
+                        },
+                        "readyReplicas": {
+                            "type": "integer"
+                        },
+                        "replicas": {
+                            "type": "integer"
+                        }
+                    }
+                },
+                "uid": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Facets-cloud_kube-dash_internal_config.TracingConfig": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "exportEnabled": {
+                    "type": "boolean"
+                },
+                "jaegerEndpoint": {
+                    "type": "string"
+                },
+                "maxTraces": {
+                    "type": "integer"
+                },
+                "retentionHours": {
+                    "type": "integer"
+                },
+                "samplingRate": {
+                    "type": "number"
+                },
+                "serviceName": {
+                    "type": "string"
+                },
+                "serviceVersion": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_api_handlers.FeatureFlagsResponse": {
+            "type": "object",
+            "properties": {
+                "enableCloudShell": {
+                    "type": "boolean"
+                },
+                "enableTracing": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "internal_api_handlers_cluster.NodeActionRequest": {
             "type": "object",
             "properties": {
                 "deleteEmptyDirData": {
@@ -13238,7 +14116,7 @@ const docTemplate = `{
                 }
             }
         },
-        "cluster.NodeListResponse": {
+        "internal_api_handlers_cluster.NodeListResponse": {
             "type": "object",
             "properties": {
                 "age": {
@@ -13332,793 +14210,43 @@ const docTemplate = `{
                 }
             }
         },
-        "config.TracingConfig": {
+        "internal_api_handlers_workloads.ContainerRestartInfo": {
             "type": "object",
             "properties": {
-                "enabled": {
-                    "type": "boolean"
-                },
-                "exportEnabled": {
-                    "type": "boolean"
-                },
-                "jaegerEndpoint": {
+                "containerName": {
                     "type": "string"
                 },
-                "maxTraces": {
+                "currentState": {
+                    "$ref": "#/definitions/internal_api_handlers_workloads.ContainerStateInfo"
+                },
+                "lastState": {
+                    "$ref": "#/definitions/internal_api_handlers_workloads.ContainerStateInfo"
+                },
+                "restartCount": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_api_handlers_workloads.ContainerStateInfo": {
+            "type": "object",
+            "properties": {
+                "exitCode": {
                     "type": "integer"
                 },
-                "retentionHours": {
-                    "type": "integer"
-                },
-                "samplingRate": {
-                    "type": "number"
-                },
-                "serviceName": {
-                    "type": "string"
-                },
-                "serviceVersion": {
-                    "type": "string"
-                }
-            }
-        },
-        "handlers.FeatureFlagsResponse": {
-            "type": "object",
-            "properties": {
-                "enableCloudShell": {
-                    "type": "boolean"
-                },
-                "enableTracing": {
-                    "type": "boolean"
-                }
-            }
-        },
-        "types.Condition": {
-            "type": "object",
-            "properties": {
-                "status": {
-                    "type": "string"
-                },
-                "type": {
-                    "type": "string"
-                }
-            }
-        },
-        "types.ConfigMapListResponse": {
-            "type": "object",
-            "properties": {
-                "age": {
-                    "type": "string"
-                },
-                "hasUpdated": {
-                    "type": "boolean"
-                },
-                "keys": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "name": {
-                    "type": "string"
-                },
-                "namespace": {
-                    "type": "string"
-                },
-                "uid": {
-                    "type": "string"
-                }
-            }
-        },
-        "types.CronJobListResponse": {
-            "type": "object",
-            "properties": {
-                "age": {
-                    "type": "string"
-                },
-                "hasUpdated": {
-                    "type": "boolean"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "namespace": {
-                    "type": "string"
-                },
-                "spec": {
-                    "type": "object",
-                    "properties": {
-                        "concurrencyPolicy": {
-                            "type": "string"
-                        },
-                        "failedJobsHistoryLimit": {
-                            "type": "integer"
-                        },
-                        "schedule": {
-                            "type": "string"
-                        },
-                        "successfulJobsHistoryLimit": {
-                            "type": "integer"
-                        },
-                        "suspend": {
-                            "type": "boolean"
-                        }
-                    }
-                },
-                "status": {
-                    "type": "object",
-                    "properties": {
-                        "active": {
-                            "type": "integer"
-                        },
-                        "lastScheduleTime": {
-                            "type": "string"
-                        },
-                        "lastSuccessfulTime": {
-                            "type": "string"
-                        }
-                    }
-                },
-                "uid": {
-                    "type": "string"
-                }
-            }
-        },
-        "types.DaemonSetListResponse": {
-            "type": "object",
-            "properties": {
-                "age": {
-                    "type": "string"
-                },
-                "hasUpdated": {
-                    "type": "boolean"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "namespace": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "object",
-                    "properties": {
-                        "currentNumberScheduled": {
-                            "type": "integer"
-                        },
-                        "desiredNumberScheduled": {
-                            "type": "integer"
-                        },
-                        "numberAvailable": {
-                            "type": "integer"
-                        },
-                        "numberMisscheduled": {
-                            "type": "integer"
-                        },
-                        "numberReady": {
-                            "type": "integer"
-                        },
-                        "observedGeneration": {
-                            "type": "integer"
-                        },
-                        "updatedNumberScheduled": {
-                            "type": "integer"
-                        }
-                    }
-                },
-                "uid": {
-                    "type": "string"
-                }
-            }
-        },
-        "types.DeploymentListResponse": {
-            "type": "object",
-            "properties": {
-                "age": {
-                    "type": "string"
-                },
-                "hasUpdated": {
-                    "type": "boolean"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "namespace": {
-                    "type": "string"
-                },
-                "replicas": {
-                    "type": "string"
-                },
-                "spec": {
-                    "type": "object",
-                    "properties": {
-                        "replicas": {
-                            "type": "integer"
-                        }
-                    }
-                },
-                "status": {
-                    "type": "object",
-                    "properties": {
-                        "availableReplicas": {
-                            "type": "integer"
-                        },
-                        "conditions": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/types.Condition"
-                            }
-                        },
-                        "observedGeneration": {
-                            "type": "integer"
-                        },
-                        "readyReplicas": {
-                            "type": "integer"
-                        },
-                        "replicas": {
-                            "type": "integer"
-                        },
-                        "updatedReplicas": {
-                            "type": "integer"
-                        }
-                    }
-                },
-                "uid": {
-                    "type": "string"
-                }
-            }
-        },
-        "types.HPAListResponse": {
-            "type": "object",
-            "properties": {
-                "age": {
-                    "type": "string"
-                },
-                "hasUpdated": {
-                    "type": "boolean"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "namespace": {
-                    "type": "string"
-                },
-                "spec": {
-                    "type": "object",
-                    "properties": {
-                        "maxPods": {
-                            "type": "integer"
-                        },
-                        "minPods": {
-                            "type": "integer"
-                        }
-                    }
-                },
-                "uid": {
-                    "type": "string"
-                }
-            }
-        },
-        "types.HelmReleaseResponse": {
-            "type": "object",
-            "properties": {
-                "age": {
-                    "type": "string"
-                },
-                "chart": {
-                    "type": "string"
-                },
-                "hasUpdated": {
-                    "type": "boolean"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "namespace": {
-                    "type": "string"
-                },
-                "revision": {
-                    "type": "integer"
-                },
-                "status": {
-                    "type": "string"
-                },
-                "uid": {
-                    "type": "string"
-                },
-                "updated": {
-                    "type": "string"
-                },
-                "version": {
-                    "type": "string"
-                }
-            }
-        },
-        "types.IngressListResponse": {
-            "type": "object",
-            "properties": {
-                "age": {
-                    "type": "string"
-                },
-                "hasUpdated": {
-                    "type": "boolean"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "namespace": {
-                    "type": "string"
-                },
-                "spec": {
-                    "type": "object",
-                    "properties": {
-                        "rules": {
-                            "type": "array",
-                            "items": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                },
-                "uid": {
-                    "type": "string"
-                }
-            }
-        },
-        "types.JobListResponse": {
-            "type": "object",
-            "properties": {
-                "age": {
-                    "type": "string"
-                },
-                "hasUpdated": {
-                    "type": "boolean"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "namespace": {
-                    "type": "string"
-                },
-                "spec": {
-                    "type": "object",
-                    "properties": {
-                        "backoffLimit": {
-                            "type": "integer"
-                        },
-                        "completionMode": {
-                            "type": "string"
-                        },
-                        "completions": {
-                            "type": "integer"
-                        },
-                        "suspend": {
-                            "type": "boolean"
-                        }
-                    }
-                },
-                "status": {
-                    "type": "object",
-                    "properties": {
-                        "active": {
-                            "type": "integer"
-                        },
-                        "conditions": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/types.Condition"
-                            }
-                        },
-                        "failed": {
-                            "type": "integer"
-                        },
-                        "ready": {
-                            "type": "integer"
-                        },
-                        "startTime": {
-                            "type": "string"
-                        },
-                        "succeeded": {
-                            "type": "integer"
-                        }
-                    }
-                },
-                "uid": {
-                    "type": "string"
-                }
-            }
-        },
-        "types.PersistentVolumeClaimListResponse": {
-            "type": "object",
-            "properties": {
-                "age": {
-                    "type": "string"
-                },
-                "hasUpdated": {
-                    "type": "boolean"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "namespace": {
-                    "type": "string"
-                },
-                "spec": {
-                    "type": "object",
-                    "properties": {
-                        "accessModes": {
-                            "type": "array",
-                            "items": {
-                                "type": "string"
-                            }
-                        },
-                        "resources": {
-                            "type": "object",
-                            "properties": {
-                                "limits": {
-                                    "type": "object",
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    }
-                                },
-                                "requests": {
-                                    "type": "object",
-                                    "additionalProperties": {
-                                        "type": "string"
-                                    }
-                                }
-                            }
-                        },
-                        "storageClassName": {
-                            "type": "string"
-                        },
-                        "volumeMode": {
-                            "type": "string"
-                        }
-                    }
-                },
-                "status": {
-                    "type": "object",
-                    "properties": {
-                        "phase": {
-                            "type": "string"
-                        }
-                    }
-                },
-                "uid": {
-                    "type": "string"
-                }
-            }
-        },
-        "types.PersistentVolumeListResponse": {
-            "type": "object",
-            "properties": {
-                "age": {
-                    "type": "string"
-                },
-                "hasUpdated": {
-                    "type": "boolean"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "spec": {
-                    "type": "object",
-                    "properties": {
-                        "accessModes": {
-                            "type": "array",
-                            "items": {
-                                "type": "string"
-                            }
-                        },
-                        "capacity": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        },
-                        "storageClassName": {
-                            "type": "string"
-                        },
-                        "volumeMode": {
-                            "type": "string"
-                        }
-                    }
-                },
-                "status": {
-                    "type": "object",
-                    "properties": {
-                        "phase": {
-                            "type": "string"
-                        }
-                    }
-                },
-                "uid": {
-                    "type": "string"
-                }
-            }
-        },
-        "types.PodDisruptionBudgetListResponse": {
-            "type": "object",
-            "properties": {
-                "age": {
-                    "type": "string"
-                },
-                "hasUpdated": {
-                    "type": "boolean"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "namespace": {
-                    "type": "string"
-                },
-                "spec": {
-                    "type": "object",
-                    "properties": {
-                        "maxUnavailable": {
-                            "type": "string"
-                        },
-                        "minAvailable": {
-                            "type": "string"
-                        }
-                    }
-                },
-                "status": {
-                    "type": "object",
-                    "properties": {
-                        "currentHealthy": {
-                            "type": "integer"
-                        },
-                        "desiredHealthy": {
-                            "type": "integer"
-                        },
-                        "disruptionsAllowed": {
-                            "type": "integer"
-                        },
-                        "expectedPods": {
-                            "type": "integer"
-                        }
-                    }
-                },
-                "uid": {
-                    "type": "string"
-                }
-            }
-        },
-        "types.PodListResponse": {
-            "type": "object",
-            "properties": {
-                "age": {
-                    "type": "string"
-                },
-                "clusterName": {
-                    "type": "string"
-                },
-                "configName": {
-                    "type": "string"
-                },
-                "cpu": {
-                    "type": "string"
-                },
-                "hasUpdated": {
-                    "type": "boolean"
-                },
-                "lastRestartAt": {
-                    "type": "string"
-                },
-                "lastRestartReason": {
-                    "type": "string"
-                },
-                "memory": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "namespace": {
-                    "type": "string"
-                },
-                "node": {
-                    "type": "string"
-                },
-                "podIP": {
-                    "type": "string"
-                },
-                "qos": {
-                    "type": "string"
-                },
-                "ready": {
-                    "type": "string"
-                },
-                "restarts": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                },
-                "uid": {
-                    "type": "string"
-                }
-            }
-        },
-        "types.ReplicaSetListResponse": {
-            "type": "object",
-            "properties": {
-                "age": {
-                    "type": "string"
-                },
-                "hasUpdated": {
-                    "type": "boolean"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "namespace": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "object",
-                    "properties": {
-                        "availableReplicas": {
-                            "type": "integer"
-                        },
-                        "fullyLabeledReplicas": {
-                            "type": "integer"
-                        },
-                        "observedGeneration": {
-                            "type": "integer"
-                        },
-                        "readyReplicas": {
-                            "type": "integer"
-                        },
-                        "replicas": {
-                            "type": "integer"
-                        }
-                    }
-                },
-                "uid": {
-                    "type": "string"
-                }
-            }
-        },
-        "types.SecretListResponse": {
-            "type": "object",
-            "properties": {
-                "age": {
-                    "type": "string"
-                },
-                "hasUpdated": {
-                    "type": "boolean"
-                },
-                "keys": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "name": {
-                    "type": "string"
-                },
-                "namespace": {
-                    "type": "string"
-                },
-                "type": {
-                    "type": "string"
-                },
-                "uid": {
-                    "type": "string"
-                }
-            }
-        },
-        "types.ServiceAccountListResponse": {
-            "type": "object",
-            "properties": {
-                "age": {
-                    "type": "string"
-                },
-                "hasUpdated": {
-                    "type": "boolean"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "namespace": {
-                    "type": "string"
-                },
-                "spec": {
-                    "type": "object",
-                    "properties": {
-                        "secrets": {
-                            "type": "integer"
-                        }
-                    }
-                },
-                "uid": {
-                    "type": "string"
-                }
-            }
-        },
-        "types.ServiceListResponse": {
-            "type": "object",
-            "properties": {
-                "age": {
-                    "type": "string"
-                },
-                "hasUpdated": {
-                    "type": "boolean"
-                },
-                "name": {
+                "finishedAt": {
                     "type": "string"
                 },
-                "namespace": {
+                "message": {
                     "type": "string"
                 },
-                "spec": {
-                    "type": "object",
-                    "properties": {
-                        "clusterIP": {
-                            "type": "string"
-                        },
-                        "externalIPs": {
-                            "type": "string"
-                        },
-                        "internalTrafficPolicy": {
-                            "type": "string"
-                        },
-                        "ipFamilyPolicy": {
-                            "type": "string"
-                        },
-                        "ports": {
-                            "type": "string"
-                        },
-                        "sessionAffinity": {
-                            "type": "string"
-                        },
-                        "type": {
-                            "type": "string"
-                        }
-                    }
-                },
-                "uid": {
-                    "type": "string"
-                }
-            }
-        },
-        "types.StatefulSetListResponse": {
-            "type": "object",
-            "properties": {
-                "age": {
-                    "type": "string"
-                },
-                "hasUpdated": {
-                    "type": "boolean"
-                },
-                "name": {
+                "reason": {
                     "type": "string"
                 },
-                "namespace": {
+                "startedAt": {
                     "type": "string"
-                },
-                "status": {
-                    "type": "object",
-                    "properties": {
-                        "availableReplicas": {
-                            "type": "integer"
-                        },
-                        "fullyLabeledReplicas": {
-                            "type": "integer"
-                        },
-                        "observedGeneration": {
-                            "type": "integer"
-                        },
-                        "readyReplicas": {
-                            "type": "integer"
-                        },
-                        "replicas": {
-                            "type": "integer"
-                        }
-                    }
                 },
-                "uid": {
+                "state": {
+                    "description": "\"running\", \"waiting\", \"terminated\"",
                     "type": "string"
                 }
             }

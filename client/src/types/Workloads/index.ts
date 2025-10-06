@@ -6,3 +6,4 @@ export * from './replicaSets';
 export * from './cronJobs';
 export * from './jobs';
 export * from './pod';
+export * from './containerRestart';

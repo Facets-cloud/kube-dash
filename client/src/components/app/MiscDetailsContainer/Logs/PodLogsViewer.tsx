@@ -31,6 +31,7 @@ import {
 import { usePodLogsWebSocket, LogMessage } from '@/hooks/usePodLogsWebSocket';
 import { cn } from '@/lib/utils';
 import { PodDetails } from '@/types';
+import { ContainerRestartInfoComponent } from './ContainerRestartInfo';
 
 interface PodLogsViewerProps {
   podName: string;
@@ -246,6 +247,7 @@ export const PodLogsViewer: React.FC<PodLogsViewerProps> = ({
   const [selectedContainer, setSelectedContainer] = useState<string>('all');
   const [searchMode, setSearchMode] = useState<'simple' | 'regex' | 'grep'>('simple');
   const [caseSensitive, setCaseSensitive] = useState(false);
+  const showRestartInfo = true; // Always show restart info for containers with restarts
 
   // Get all containers from pod spec (containers + initContainers + ephemeralContainers)
   const allPodContainers = React.useMemo(() => {
@@ -795,7 +797,20 @@ export const PodLogsViewer: React.FC<PodLogsViewerProps> = ({
           maxLines={maxLines}
           onMaxLinesChange={setMaxLines}
         />
-      
+
+      {/* Container Restart Information */}
+      {showRestartInfo && (
+        <div className="px-4 py-3 border-b bg-muted/10">
+          <ContainerRestartInfoComponent
+            podName={podName}
+            namespace={namespace}
+            configName={configName}
+            clusterName={clusterName}
+            containerName={selectedContainer !== 'all' ? selectedContainer : undefined}
+          />
+        </div>
+      )}
+
       <CardContent className="flex-1 p-0 min-h-0">
         {filteredLogs.length === 0 ? (
           <div className="flex items-center justify-center h-full text-muted-foreground">
