@@ -1,5 +1,8 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from '@tanstack/react-router';
+import { useAppSelector } from '@/redux/hooks';
+import { RootState } from '@/redux/store';
+import { toast } from 'sonner';
 
 export interface Tab {
   id: string;
@@ -53,6 +56,7 @@ export const TabsProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [closedTabs, setClosedTabs] = useState<Tab[]>([]);
   const saveTimeoutRef = useRef<NodeJS.Timeout>();
+  const { clusters } = useAppSelector((state: RootState) => state.clusters);
 
   // Load tabs from localStorage on mount
   useEffect(() => {
@@ -134,6 +138,47 @@ export const TabsProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [closedTabs]);
 
+  // Clean up tabs when configs are deleted
+  useEffect(() => {
+    if (!clusters?.kubeConfigs || tabs.length === 0) return;
+
+    const validConfigIds = Object.keys(clusters.kubeConfigs);
+
+    // Filter out tabs that reference deleted configs
+    const validTabs = tabs.filter(tab => {
+      if (!tab.route) return true;
+
+      const pathSegments = tab.route.split('/');
+      if (pathSegments.length > 1 && pathSegments[1] !== 'config' && pathSegments[1] !== '') {
+        const configId = pathSegments[1];
+        return validConfigIds.includes(configId);
+      }
+
+      return true;
+    });
+
+    // If any tabs were removed, update state
+    if (validTabs.length !== tabs.length) {
+      setTabs(validTabs);
+
+      // If the active tab was removed, activate another one
+      if (activeTabId && !validTabs.find(t => t.id === activeTabId)) {
+        if (validTabs.length > 0) {
+          const newActiveTab = validTabs[0];
+          setActiveTabId(newActiveTab.id);
+          newActiveTab.isActive = true;
+
+          if (newActiveTab.route) {
+            navigate({ to: newActiveTab.route } as any);
+          }
+        } else {
+          setActiveTabId(null);
+          navigate({ to: '/config' } as any);
+        }
+      }
+    }
+  }, [clusters]);
+
   const addTab = useCallback((tab: Omit<Tab, 'id' | 'isActive' | 'timestamp'>): string => {
     const tabId = generateTabId();
     const newTab: Tab = {
@@ -197,6 +242,42 @@ export const TabsProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const tab = prevTabs.find(t => t.id === id);
       if (!tab) return prevTabs;
 
+      // Validate that the config in the tab's route still exists
+      if (tab.route && clusters?.kubeConfigs) {
+        const pathSegments = tab.route.split('/');
+        // Route format is typically /{config}/list or /{config}/details
+        if (pathSegments.length > 1 && pathSegments[1] !== 'config' && pathSegments[1] !== '') {
+          const configId = pathSegments[1];
+
+          // Check if config exists
+          if (!clusters.kubeConfigs[configId]) {
+            // Config no longer exists, close the tab instead of switching to it
+            toast.error("Configuration no longer available", {
+              description: `The configuration "${configId}" has been deleted. Closing this tab.`,
+            });
+
+            // Close this tab and don't switch to it
+            const newTabs = prevTabs.filter(t => t.id !== id);
+
+            // If this was the active tab, activate another one
+            if (activeTabId === id && newTabs.length > 0) {
+              const tabIndex = prevTabs.findIndex(t => t.id === id);
+              const newActiveIndex = Math.min(tabIndex, newTabs.length - 1);
+              const newActiveTab = newTabs[newActiveIndex];
+
+              newTabs[newActiveIndex] = { ...newActiveTab, isActive: true };
+              setActiveTabId(newActiveTab.id);
+
+              if (newActiveTab.route) {
+                navigate({ to: newActiveTab.route } as any);
+              }
+            }
+
+            return newTabs;
+          }
+        }
+      }
+
       const updatedTabs = prevTabs.map(t => ({
         ...t,
         isActive: t.id === id,
@@ -211,7 +292,7 @@ export const TabsProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       return updatedTabs;
     });
-  }, [navigate, location]);
+  }, [navigate, location, clusters, activeTabId]);
 
   const updateTab = useCallback((id: string, updates: Partial<Tab>) => {
     setTabs(prevTabs =>
