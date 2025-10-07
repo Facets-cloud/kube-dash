@@ -92,6 +92,29 @@ type PodDetailsSpec = {
     terminationMessagePolicy: string,
     imagePullPolicy: string
   }[],
+  ephemeralContainers?: {
+    name: string,
+    image: string,
+    command: [],
+    resources: {
+      [key: string]: string,
+    },
+    ports?: {
+      containerPort: number,
+      protocol?: string,
+      name?: string,
+      hostPort?: number,
+      hostIP?: string
+    }[],
+    volumeMounts:{
+        name: string,
+        readOnly: boolean,
+        mountPath: string
+      }[],
+    terminationMessagePath: string,
+    terminationMessagePolicy: string,
+    imagePullPolicy: string
+  }[],
   restartPolicy: string,
   terminationGracePeriodSeconds: number,
   dnsPolicy: string,

@@ -524,6 +524,7 @@ func (s *Server) setupRoutes() {
 		api.GET("/pods/:namespace/:name", s.podsHandler.GetPod)
 		api.GET("/pods/:namespace/:name/yaml", s.podsHandler.GetPodYAML)
 		api.GET("/pods/:namespace/:name/events", s.podsHandler.GetPodEvents)
+		api.GET("/pods/:namespace/:name/restarts", s.podsHandler.GetPodContainerRestartInfo)
 
 		api.GET("/pods/:namespace/:name/logs/ws", s.podLogsHandler.HandlePodLogs)
 		api.GET("/pods/:namespace/:name/metrics", s.podsHandler.GetPodMetricsHistory)

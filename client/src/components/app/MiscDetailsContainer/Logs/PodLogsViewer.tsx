@@ -8,6 +8,7 @@ import { Separator } from '@/components/ui/separator';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 import { toast } from 'sonner';
 
@@ -27,9 +28,13 @@ import {
   Regex,
   History,
   Hash,
+  InfoIcon,
 } from 'lucide-react';
 import { usePodLogsWebSocket, LogMessage } from '@/hooks/usePodLogsWebSocket';
 import { cn } from '@/lib/utils';
+import { PodDetails } from '@/types';
+import { ContainerRestartInfoComponent } from './ContainerRestartInfo';
+import Ansi from 'ansi-to-react';
 
 interface PodLogsViewerProps {
   podName: string;
@@ -39,6 +44,9 @@ interface PodLogsViewerProps {
   container?: string;
   allContainers?: boolean;
   className?: string;
+  podDetails?: PodDetails;
+  viewControls?: React.ReactNode;
+  isFullscreen?: boolean;
 }
 
 interface LogEntry extends LogMessage {
@@ -73,15 +81,63 @@ const LogRetrievalControls: React.FC<{
   onLogModeChange: (mode: 'all' | 'tail') => void;
   maxLines: number;
   onMaxLinesChange: (lines: number) => void;
-}> = ({ 
-  includePrevious, 
-  onIncludePreviousChange, 
-  logMode, 
-  onLogModeChange, 
-  maxLines, 
-  onMaxLinesChange
+  podName: string;
+  namespace: string;
+  configName: string;
+  clusterName: string;
+  containerName?: string;
+}> = ({
+  includePrevious,
+  onIncludePreviousChange,
+  logMode,
+  onLogModeChange,
+  maxLines,
+  onMaxLinesChange,
+  podName,
+  namespace,
+  configName,
+  clusterName,
+  containerName,
 }) => {
-  
+  const [restartInfos, setRestartInfos] = React.useState<any[]>([]);
+  const [loadingRestarts, setLoadingRestarts] = React.useState(false);
+
+  React.useEffect(() => {
+    const fetchRestartInfo = async () => {
+      try {
+        setLoadingRestarts(true);
+        const params = new URLSearchParams({
+          config: configName,
+          cluster: clusterName,
+        });
+
+        const response = await fetch(
+          `/api/v1/pods/${namespace}/${podName}/restarts?${params.toString()}`
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          setRestartInfos(data);
+        }
+      } catch (err) {
+        console.error('Failed to fetch restart info:', err);
+      } finally {
+        setLoadingRestarts(false);
+      }
+    };
+
+    fetchRestartInfo();
+  }, [podName, namespace, configName, clusterName]);
+
+  // Filter by container name if provided
+  // Note: We don't add containerName to the useEffect deps because we fetch all containers
+  // and filter client-side to avoid unnecessary API calls when switching containers
+  const filteredInfos = containerName
+    ? restartInfos.filter(info => info.containerName === containerName)
+    : restartInfos;
+
+  const hasRestarts = filteredInfos.some(info => info.restartCount > 0);
+
   return (
     <div className="flex items-center gap-4 p-3 border-b bg-muted/30">
       <div className="flex items-center gap-2">
@@ -90,9 +146,12 @@ const LogRetrievalControls: React.FC<{
           <Tooltip>
             <TooltipTrigger asChild>
               <div className="flex items-center gap-2">
-                <Label 
-                  htmlFor="previous-logs" 
-                  className="text-sm font-medium"
+                <Label
+                  htmlFor="previous-logs"
+                  className={cn(
+                    "text-sm font-medium",
+                    !hasRestarts && "text-muted-foreground"
+                  )}
                 >
                   Show Previous Logs
                 </Label>
@@ -100,11 +159,46 @@ const LogRetrievalControls: React.FC<{
                   id="previous-logs"
                   checked={includePrevious}
                   onCheckedChange={onIncludePreviousChange}
+                  disabled={!hasRestarts}
                 />
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button className="focus:outline-none">
+                      <InfoIcon className="w-4 h-4 text-muted-foreground hover:text-foreground transition-colors cursor-pointer" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-80 max-h-96 overflow-auto" align="start">
+                    <div className="space-y-2">
+                      <h4 className="font-medium text-sm">Container Restart Information</h4>
+                      {loadingRestarts ? (
+                        <p className="text-xs text-muted-foreground">Loading...</p>
+                      ) : !hasRestarts ? (
+                        <div className="text-xs text-muted-foreground">
+                          <p className="font-medium text-green-600 dark:text-green-400 mb-1">✓ No Restarts</p>
+                          <p>
+                            {filteredInfos.length === 1
+                              ? 'This container has not restarted.'
+                              : filteredInfos.length > 1
+                              ? 'None of the containers have restarted.'
+                              : 'No container information available.'}
+                          </p>
+                        </div>
+                      ) : (
+                        <ContainerRestartInfoComponent
+                          podName={podName}
+                          namespace={namespace}
+                          configName={configName}
+                          clusterName={clusterName}
+                          containerName={containerName}
+                        />
+                      )}
+                    </div>
+                  </PopoverContent>
+                </Popover>
               </div>
             </TooltipTrigger>
             <TooltipContent>
-              <p>Toggle between current and previous pod logs</p>
+              <p>{hasRestarts ? 'Toggle between current and previous pod logs' : 'No restarts detected '}</p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
@@ -152,14 +246,27 @@ const LogLine: React.FC<{
 }> = ({ log, showTimestamps, searchTerm, onCopyLine }) => {
   const levelColor = log.level ? LOG_LEVEL_COLORS[log.level as keyof typeof LOG_LEVEL_COLORS] : '';
   const LevelIcon = log.level ? LOG_LEVEL_ICONS[log.level as keyof typeof LOG_LEVEL_ICONS] : null;
-  
+
   const highlightText = (text: string, term: string) => {
-    if (!term) return text;
-    
+    if (!term) {
+      // No search term - just render with ANSI colors
+      return <Ansi>{text}</Ansi>;
+    }
+
+    // Strip ANSI codes for searching, then highlight matches
+    // eslint-disable-next-line no-control-regex
+    const strippedText = text.replace(/\x1b\[[0-9;]*m/g, '');
     const regex = new RegExp(`(${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
-    const parts = text.split(regex);
-    
-    return parts.map((part, i) => 
+
+    if (!regex.test(strippedText)) {
+      // No match - just render with ANSI colors
+      return <Ansi>{text}</Ansi>;
+    }
+
+    // Has match - for simplicity, show highlighted version without ANSI colors
+    // (combining both is complex and search highlighting takes priority)
+    const parts = strippedText.split(regex);
+    return parts.map((part, i) =>
       regex.test(part) ? (
         <span key={i} className="bg-yellow-200 dark:bg-yellow-800 px-1 rounded">
           {part}
@@ -231,6 +338,9 @@ export const PodLogsViewer: React.FC<PodLogsViewerProps> = ({
   container,
   allContainers = false,
   className,
+  podDetails,
+  viewControls,
+  isFullscreen = false,
 }) => {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [showTimestamps, setShowTimestamps] = useState(true);
@@ -243,6 +353,31 @@ export const PodLogsViewer: React.FC<PodLogsViewerProps> = ({
   const [selectedContainer, setSelectedContainer] = useState<string>('all');
   const [searchMode, setSearchMode] = useState<'simple' | 'regex' | 'grep'>('simple');
   const [caseSensitive, setCaseSensitive] = useState(false);
+
+  // Get all containers from pod spec (containers + initContainers + ephemeralContainers)
+  const allPodContainers = React.useMemo(() => {
+    if (!podDetails?.spec) return [];
+
+    const containers: string[] = [];
+
+    // Add regular containers
+    if (podDetails.spec.containers) {
+      containers.push(...podDetails.spec.containers.map(c => c.name));
+    }
+
+    // Add init containers
+    if (podDetails.spec.initContainers) {
+      containers.push(...podDetails.spec.initContainers.map(c => c.name));
+    }
+
+    // Add ephemeral containers (for debugging)
+    if ((podDetails.spec as any).ephemeralContainers) {
+      containers.push(...(podDetails.spec as any).ephemeralContainers.map((c: any) => c.name));
+    }
+
+    return containers;
+  }, [podDetails]);
+
   const [availableContainers, setAvailableContainers] = useState<string[]>([]);
   
   // New state variables for enhanced functionality
@@ -302,6 +437,10 @@ export const PodLogsViewer: React.FC<PodLogsViewerProps> = ({
 
   
   // WebSocket connection
+  // If a specific container is selected from dropdown, use that; otherwise use the prop or all containers
+  const effectiveContainer = selectedContainer && selectedContainer !== 'all' ? selectedContainer : container;
+  const effectiveAllContainers = selectedContainer === 'all' || (!selectedContainer && allContainers);
+
   const {
     isConnected,
     isConnecting,
@@ -311,8 +450,8 @@ export const PodLogsViewer: React.FC<PodLogsViewerProps> = ({
     namespace,
     configName,
     clusterName,
-    container,
-    allContainers,
+    container: effectiveContainer,
+    allContainers: effectiveAllContainers,
     tailLines: logMode === 'tail' ? maxLines : undefined,
     previous: includePrevious,
     allLogs: logMode === 'all',
@@ -331,13 +470,14 @@ export const PodLogsViewer: React.FC<PodLogsViewerProps> = ({
         noPreviousLogsTimeoutRef.current = null;
       }
       
-      // Update available containers
+      // Update available containers by merging with containers from pod spec
       if (logEntry.container) {
         setAvailableContainers(prev => {
-          if (!prev.includes(logEntry.container!)) {
-            return [...prev, logEntry.container!].sort();
+          const merged = new Set([...allPodContainers, ...prev]);
+          if (!merged.has(logEntry.container!)) {
+            merged.add(logEntry.container!);
           }
-          return prev;
+          return Array.from(merged).sort();
         });
       }
       
@@ -395,12 +535,22 @@ export const PodLogsViewer: React.FC<PodLogsViewerProps> = ({
           .replace(/\?/g, '.')   // ? becomes .
           .replace(/\[([^\]]*)\]/g, '[$1]'); // character classes
         const searchRegex = new RegExp(grepPattern, caseSensitive ? 'g' : 'gi');
-        filtered = filtered.filter(log => searchRegex.test(log.message));
+        filtered = filtered.filter(log => {
+          // Strip ANSI codes before searching
+          // eslint-disable-next-line no-control-regex
+          const cleanMessage = log.message.replace(/\x1b\[[0-9;]*m/g, '');
+          return searchRegex.test(cleanMessage);
+        });
       } catch (error) {
         // Invalid regex, fall back to simple search
         const escapedTerm = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const searchRegex = new RegExp(escapedTerm, caseSensitive ? 'g' : 'gi');
-        filtered = filtered.filter(log => searchRegex.test(log.message));
+        filtered = filtered.filter(log => {
+          // Strip ANSI codes before searching
+          // eslint-disable-next-line no-control-regex
+          const cleanMessage = log.message.replace(/\x1b\[[0-9;]*m/g, '');
+          return searchRegex.test(cleanMessage);
+        });
       }
     }
     
@@ -433,7 +583,10 @@ export const PodLogsViewer: React.FC<PodLogsViewerProps> = ({
     }
 
     const updatedLogs = logs.map((log, index) => {
-      const matches = searchRegex.test(log.message);
+      // Strip ANSI codes before searching
+      // eslint-disable-next-line no-control-regex
+      const cleanMessage = log.message.replace(/\x1b\[[0-9;]*m/g, '');
+      const matches = searchRegex.test(cleanMessage);
       if (matches) {
         results.push(index);
       }
@@ -466,6 +619,21 @@ export const PodLogsViewer: React.FC<PodLogsViewerProps> = ({
     }
   }, [filteredLogs, autoScroll, scrollToBottom]);
   
+  // Initialize available containers from pod spec
+  useEffect(() => {
+    if (allPodContainers.length > 0) {
+      setAvailableContainers(allPodContainers);
+    }
+  }, [allPodContainers]);
+
+  // Clear logs when container selection changes (to avoid showing stale logs)
+  useEffect(() => {
+    setLogs([]);
+    setSearchResults([]);
+    setCurrentSearchIndex(-1);
+    setHasReceivedLogs(false);
+  }, [selectedContainer]);
+
   // Cleanup timeout on unmount
   useEffect(() => {
     return () => {
@@ -495,10 +663,13 @@ export const PodLogsViewer: React.FC<PodLogsViewerProps> = ({
 
   // Copy log line
   const handleCopyLine = useCallback((log: LogEntry) => {
-    const text = showTimestamps 
-      ? `${log.timestamp} ${log.container ? `[${log.container}] ` : ''}${log.message}`
-      : `${log.container ? `[${log.container}] ` : ''}${log.message}`;
-    
+    // Strip ANSI codes from the message before copying
+    // eslint-disable-next-line no-control-regex
+    const cleanMessage = log.message.replace(/\x1b\[[0-9;]*m/g, '');
+    const text = showTimestamps
+      ? `${log.timestamp} ${log.container ? `[${log.container}] ` : ''}${cleanMessage}`
+      : `${log.container ? `[${log.container}] ` : ''}${cleanMessage}`;
+
     navigator.clipboard.writeText(text).then(() => {
       toast.success('Copied to clipboard');
     }).catch(() => {
@@ -509,11 +680,14 @@ export const PodLogsViewer: React.FC<PodLogsViewerProps> = ({
   // Download logs
   const handleDownloadLogs = useCallback(() => {
     const content = filteredLogs.map(log => {
+      // Strip ANSI codes from the message before downloading
+      // eslint-disable-next-line no-control-regex
+      const cleanMessage = log.message.replace(/\x1b\[[0-9;]*m/g, '');
       const timestamp = showTimestamps ? `${log.timestamp} ` : '';
       const containerName = log.container ? `[${log.container}] ` : '';
-      return `${timestamp}${containerName}${log.message}`;
+      return `${timestamp}${containerName}${cleanMessage}`;
     }).join('\n');
-    
+
     const blob = new Blob([content], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -523,7 +697,7 @@ export const PodLogsViewer: React.FC<PodLogsViewerProps> = ({
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    
+
     toast.success('Logs downloaded successfully');
   }, [filteredLogs, showTimestamps, podName, container]);
 
@@ -721,6 +895,13 @@ export const PodLogsViewer: React.FC<PodLogsViewerProps> = ({
           >
             <Trash2 className="w-4 h-4" />
           </Button>
+
+          {viewControls && (
+            <>
+              <Separator orientation="vertical" className="h-6" />
+              {viewControls}
+            </>
+          )}
         </div>
         
         {/* Status */}
@@ -746,8 +927,13 @@ export const PodLogsViewer: React.FC<PodLogsViewerProps> = ({
           onLogModeChange={setLogMode}
           maxLines={maxLines}
           onMaxLinesChange={setMaxLines}
+          podName={podName}
+          namespace={namespace}
+          configName={configName}
+          clusterName={clusterName}
+          containerName={selectedContainer !== 'all' ? selectedContainer : undefined}
         />
-      
+
       <CardContent className="flex-1 p-0 min-h-0">
         {filteredLogs.length === 0 ? (
           <div className="flex items-center justify-center h-full text-muted-foreground">
@@ -773,9 +959,12 @@ export const PodLogsViewer: React.FC<PodLogsViewerProps> = ({
             </div>
           </div>
         ) : (
-          <div 
+          <div
             ref={scrollAreaRef}
-            className="h-full overflow-auto scrollbar-active max-h-[calc(100vh-20rem)]"
+            className={cn(
+              "h-full overflow-auto scrollbar-active",
+              !isFullscreen && "max-h-[calc(100vh-20rem)]"
+            )}
             onScroll={handleScroll}
           >
             <div className="space-y-0">

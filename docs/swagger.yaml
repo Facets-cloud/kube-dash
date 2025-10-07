@@ -1,5 +1,519 @@
 definitions:
-  cluster.NodeActionRequest:
+  github_com_Facets-cloud_kube-dash_internal_api_types.Condition:
+    properties:
+      status:
+        type: string
+      type:
+        type: string
+    type: object
+  github_com_Facets-cloud_kube-dash_internal_api_types.ConfigMapListResponse:
+    properties:
+      age:
+        type: string
+      hasUpdated:
+        type: boolean
+      keys:
+        items:
+          type: string
+        type: array
+      name:
+        type: string
+      namespace:
+        type: string
+      uid:
+        type: string
+    type: object
+  github_com_Facets-cloud_kube-dash_internal_api_types.CronJobListResponse:
+    properties:
+      age:
+        type: string
+      hasUpdated:
+        type: boolean
+      name:
+        type: string
+      namespace:
+        type: string
+      spec:
+        properties:
+          concurrencyPolicy:
+            type: string
+          failedJobsHistoryLimit:
+            type: integer
+          schedule:
+            type: string
+          successfulJobsHistoryLimit:
+            type: integer
+          suspend:
+            type: boolean
+        type: object
+      status:
+        properties:
+          active:
+            type: integer
+          lastScheduleTime:
+            type: string
+          lastSuccessfulTime:
+            type: string
+        type: object
+      uid:
+        type: string
+    type: object
+  github_com_Facets-cloud_kube-dash_internal_api_types.DaemonSetListResponse:
+    properties:
+      age:
+        type: string
+      hasUpdated:
+        type: boolean
+      name:
+        type: string
+      namespace:
+        type: string
+      status:
+        properties:
+          currentNumberScheduled:
+            type: integer
+          desiredNumberScheduled:
+            type: integer
+          numberAvailable:
+            type: integer
+          numberMisscheduled:
+            type: integer
+          numberReady:
+            type: integer
+          observedGeneration:
+            type: integer
+          updatedNumberScheduled:
+            type: integer
+        type: object
+      uid:
+        type: string
+    type: object
+  github_com_Facets-cloud_kube-dash_internal_api_types.DeploymentListResponse:
+    properties:
+      age:
+        type: string
+      hasUpdated:
+        type: boolean
+      name:
+        type: string
+      namespace:
+        type: string
+      replicas:
+        type: string
+      spec:
+        properties:
+          replicas:
+            type: integer
+        type: object
+      status:
+        properties:
+          availableReplicas:
+            type: integer
+          conditions:
+            items:
+              $ref: '#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.Condition'
+            type: array
+          observedGeneration:
+            type: integer
+          readyReplicas:
+            type: integer
+          replicas:
+            type: integer
+          updatedReplicas:
+            type: integer
+        type: object
+      uid:
+        type: string
+    type: object
+  github_com_Facets-cloud_kube-dash_internal_api_types.HPAListResponse:
+    properties:
+      age:
+        type: string
+      hasUpdated:
+        type: boolean
+      name:
+        type: string
+      namespace:
+        type: string
+      spec:
+        properties:
+          maxPods:
+            type: integer
+          minPods:
+            type: integer
+        type: object
+      uid:
+        type: string
+    type: object
+  github_com_Facets-cloud_kube-dash_internal_api_types.HelmReleaseResponse:
+    properties:
+      age:
+        type: string
+      chart:
+        type: string
+      hasUpdated:
+        type: boolean
+      name:
+        type: string
+      namespace:
+        type: string
+      revision:
+        type: integer
+      status:
+        type: string
+      uid:
+        type: string
+      updated:
+        type: string
+      version:
+        type: string
+    type: object
+  github_com_Facets-cloud_kube-dash_internal_api_types.IngressListResponse:
+    properties:
+      age:
+        type: string
+      hasUpdated:
+        type: boolean
+      name:
+        type: string
+      namespace:
+        type: string
+      spec:
+        properties:
+          rules:
+            items:
+              type: string
+            type: array
+        type: object
+      uid:
+        type: string
+    type: object
+  github_com_Facets-cloud_kube-dash_internal_api_types.JobListResponse:
+    properties:
+      age:
+        type: string
+      hasUpdated:
+        type: boolean
+      name:
+        type: string
+      namespace:
+        type: string
+      spec:
+        properties:
+          backoffLimit:
+            type: integer
+          completionMode:
+            type: string
+          completions:
+            type: integer
+          suspend:
+            type: boolean
+        type: object
+      status:
+        properties:
+          active:
+            type: integer
+          conditions:
+            items:
+              $ref: '#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.Condition'
+            type: array
+          failed:
+            type: integer
+          ready:
+            type: integer
+          startTime:
+            type: string
+          succeeded:
+            type: integer
+        type: object
+      uid:
+        type: string
+    type: object
+  github_com_Facets-cloud_kube-dash_internal_api_types.PersistentVolumeClaimListResponse:
+    properties:
+      age:
+        type: string
+      hasUpdated:
+        type: boolean
+      name:
+        type: string
+      namespace:
+        type: string
+      spec:
+        properties:
+          accessModes:
+            items:
+              type: string
+            type: array
+          resources:
+            properties:
+              limits:
+                additionalProperties:
+                  type: string
+                type: object
+              requests:
+                additionalProperties:
+                  type: string
+                type: object
+            type: object
+          storageClassName:
+            type: string
+          volumeMode:
+            type: string
+        type: object
+      status:
+        properties:
+          phase:
+            type: string
+        type: object
+      uid:
+        type: string
+    type: object
+  github_com_Facets-cloud_kube-dash_internal_api_types.PersistentVolumeListResponse:
+    properties:
+      age:
+        type: string
+      hasUpdated:
+        type: boolean
+      name:
+        type: string
+      spec:
+        properties:
+          accessModes:
+            items:
+              type: string
+            type: array
+          capacity:
+            additionalProperties:
+              type: string
+            type: object
+          storageClassName:
+            type: string
+          volumeMode:
+            type: string
+        type: object
+      status:
+        properties:
+          phase:
+            type: string
+        type: object
+      uid:
+        type: string
+    type: object
+  github_com_Facets-cloud_kube-dash_internal_api_types.PodDisruptionBudgetListResponse:
+    properties:
+      age:
+        type: string
+      hasUpdated:
+        type: boolean
+      name:
+        type: string
+      namespace:
+        type: string
+      spec:
+        properties:
+          maxUnavailable:
+            type: string
+          minAvailable:
+            type: string
+        type: object
+      status:
+        properties:
+          currentHealthy:
+            type: integer
+          desiredHealthy:
+            type: integer
+          disruptionsAllowed:
+            type: integer
+          expectedPods:
+            type: integer
+        type: object
+      uid:
+        type: string
+    type: object
+  github_com_Facets-cloud_kube-dash_internal_api_types.PodListResponse:
+    properties:
+      age:
+        type: string
+      clusterName:
+        type: string
+      configName:
+        type: string
+      cpu:
+        type: string
+      hasUpdated:
+        type: boolean
+      lastRestartAt:
+        type: string
+      lastRestartReason:
+        type: string
+      memory:
+        type: string
+      name:
+        type: string
+      namespace:
+        type: string
+      node:
+        type: string
+      podIP:
+        type: string
+      qos:
+        type: string
+      ready:
+        type: string
+      restarts:
+        type: string
+      status:
+        type: string
+      uid:
+        type: string
+    type: object
+  github_com_Facets-cloud_kube-dash_internal_api_types.ReplicaSetListResponse:
+    properties:
+      age:
+        type: string
+      hasUpdated:
+        type: boolean
+      name:
+        type: string
+      namespace:
+        type: string
+      status:
+        properties:
+          availableReplicas:
+            type: integer
+          fullyLabeledReplicas:
+            type: integer
+          observedGeneration:
+            type: integer
+          readyReplicas:
+            type: integer
+          replicas:
+            type: integer
+        type: object
+      uid:
+        type: string
+    type: object
+  github_com_Facets-cloud_kube-dash_internal_api_types.SecretListResponse:
+    properties:
+      age:
+        type: string
+      hasUpdated:
+        type: boolean
+      keys:
+        items:
+          type: string
+        type: array
+      name:
+        type: string
+      namespace:
+        type: string
+      type:
+        type: string
+      uid:
+        type: string
+    type: object
+  github_com_Facets-cloud_kube-dash_internal_api_types.ServiceAccountListResponse:
+    properties:
+      age:
+        type: string
+      hasUpdated:
+        type: boolean
+      name:
+        type: string
+      namespace:
+        type: string
+      spec:
+        properties:
+          secrets:
+            type: integer
+        type: object
+      uid:
+        type: string
+    type: object
+  github_com_Facets-cloud_kube-dash_internal_api_types.ServiceListResponse:
+    properties:
+      age:
+        type: string
+      hasUpdated:
+        type: boolean
+      name:
+        type: string
+      namespace:
+        type: string
+      spec:
+        properties:
+          clusterIP:
+            type: string
+          externalIPs:
+            type: string
+          internalTrafficPolicy:
+            type: string
+          ipFamilyPolicy:
+            type: string
+          ports:
+            type: string
+          sessionAffinity:
+            type: string
+          type:
+            type: string
+        type: object
+      uid:
+        type: string
+    type: object
+  github_com_Facets-cloud_kube-dash_internal_api_types.StatefulSetListResponse:
+    properties:
+      age:
+        type: string
+      hasUpdated:
+        type: boolean
+      name:
+        type: string
+      namespace:
+        type: string
+      status:
+        properties:
+          availableReplicas:
+            type: integer
+          fullyLabeledReplicas:
+            type: integer
+          observedGeneration:
+            type: integer
+          readyReplicas:
+            type: integer
+          replicas:
+            type: integer
+        type: object
+      uid:
+        type: string
+    type: object
+  github_com_Facets-cloud_kube-dash_internal_config.TracingConfig:
+    properties:
+      enabled:
+        type: boolean
+      exportEnabled:
+        type: boolean
+      jaegerEndpoint:
+        type: string
+      maxTraces:
+        type: integer
+      retentionHours:
+        type: integer
+      samplingRate:
+        type: number
+      serviceName:
+        type: string
+      serviceVersion:
+        type: string
+    type: object
+  internal_api_handlers.FeatureFlagsResponse:
+    properties:
+      enableCloudShell:
+        type: boolean
+      enableTracing:
+        type: boolean
+    type: object
+  internal_api_handlers_cluster.NodeActionRequest:
     properties:
       deleteEmptyDirData:
         type: boolean
@@ -10,7 +524,7 @@ definitions:
       ignoreDaemonSets:
         type: boolean
     type: object
-  cluster.NodeListResponse:
+  internal_api_handlers_cluster.NodeListResponse:
     properties:
       age:
         type: string
@@ -71,518 +585,31 @@ definitions:
       uid:
         type: string
     type: object
-  config.TracingConfig:
+  internal_api_handlers_workloads.ContainerRestartInfo:
     properties:
-      enabled:
-        type: boolean
-      exportEnabled:
-        type: boolean
-      jaegerEndpoint:
+      containerName:
         type: string
-      maxTraces:
+      currentState:
+        $ref: '#/definitions/internal_api_handlers_workloads.ContainerStateInfo'
+      lastState:
+        $ref: '#/definitions/internal_api_handlers_workloads.ContainerStateInfo'
+      restartCount:
         type: integer
-      retentionHours:
+    type: object
+  internal_api_handlers_workloads.ContainerStateInfo:
+    properties:
+      exitCode:
         type: integer
-      samplingRate:
-        type: number
-      serviceName:
+      finishedAt:
         type: string
-      serviceVersion:
+      message:
         type: string
-    type: object
-  handlers.FeatureFlagsResponse:
-    properties:
-      enableCloudShell:
-        type: boolean
-      enableTracing:
-        type: boolean
-    type: object
-  types.Condition:
-    properties:
-      status:
+      reason:
         type: string
-      type:
+      startedAt:
         type: string
-    type: object
-  types.ConfigMapListResponse:
-    properties:
-      age:
-        type: string
-      hasUpdated:
-        type: boolean
-      keys:
-        items:
-          type: string
-        type: array
-      name:
-        type: string
-      namespace:
-        type: string
-      uid:
-        type: string
-    type: object
-  types.CronJobListResponse:
-    properties:
-      age:
-        type: string
-      hasUpdated:
-        type: boolean
-      name:
-        type: string
-      namespace:
-        type: string
-      spec:
-        properties:
-          concurrencyPolicy:
-            type: string
-          failedJobsHistoryLimit:
-            type: integer
-          schedule:
-            type: string
-          successfulJobsHistoryLimit:
-            type: integer
-          suspend:
-            type: boolean
-        type: object
-      status:
-        properties:
-          active:
-            type: integer
-          lastScheduleTime:
-            type: string
-          lastSuccessfulTime:
-            type: string
-        type: object
-      uid:
-        type: string
-    type: object
-  types.DaemonSetListResponse:
-    properties:
-      age:
-        type: string
-      hasUpdated:
-        type: boolean
-      name:
-        type: string
-      namespace:
-        type: string
-      status:
-        properties:
-          currentNumberScheduled:
-            type: integer
-          desiredNumberScheduled:
-            type: integer
-          numberAvailable:
-            type: integer
-          numberMisscheduled:
-            type: integer
-          numberReady:
-            type: integer
-          observedGeneration:
-            type: integer
-          updatedNumberScheduled:
-            type: integer
-        type: object
-      uid:
-        type: string
-    type: object
-  types.DeploymentListResponse:
-    properties:
-      age:
-        type: string
-      hasUpdated:
-        type: boolean
-      name:
-        type: string
-      namespace:
-        type: string
-      replicas:
-        type: string
-      spec:
-        properties:
-          replicas:
-            type: integer
-        type: object
-      status:
-        properties:
-          availableReplicas:
-            type: integer
-          conditions:
-            items:
-              $ref: '#/definitions/types.Condition'
-            type: array
-          observedGeneration:
-            type: integer
-          readyReplicas:
-            type: integer
-          replicas:
-            type: integer
-          updatedReplicas:
-            type: integer
-        type: object
-      uid:
-        type: string
-    type: object
-  types.HPAListResponse:
-    properties:
-      age:
-        type: string
-      hasUpdated:
-        type: boolean
-      name:
-        type: string
-      namespace:
-        type: string
-      spec:
-        properties:
-          maxPods:
-            type: integer
-          minPods:
-            type: integer
-        type: object
-      uid:
-        type: string
-    type: object
-  types.HelmReleaseResponse:
-    properties:
-      age:
-        type: string
-      chart:
-        type: string
-      hasUpdated:
-        type: boolean
-      name:
-        type: string
-      namespace:
-        type: string
-      revision:
-        type: integer
-      status:
-        type: string
-      uid:
-        type: string
-      updated:
-        type: string
-      version:
-        type: string
-    type: object
-  types.IngressListResponse:
-    properties:
-      age:
-        type: string
-      hasUpdated:
-        type: boolean
-      name:
-        type: string
-      namespace:
-        type: string
-      spec:
-        properties:
-          rules:
-            items:
-              type: string
-            type: array
-        type: object
-      uid:
-        type: string
-    type: object
-  types.JobListResponse:
-    properties:
-      age:
-        type: string
-      hasUpdated:
-        type: boolean
-      name:
-        type: string
-      namespace:
-        type: string
-      spec:
-        properties:
-          backoffLimit:
-            type: integer
-          completionMode:
-            type: string
-          completions:
-            type: integer
-          suspend:
-            type: boolean
-        type: object
-      status:
-        properties:
-          active:
-            type: integer
-          conditions:
-            items:
-              $ref: '#/definitions/types.Condition'
-            type: array
-          failed:
-            type: integer
-          ready:
-            type: integer
-          startTime:
-            type: string
-          succeeded:
-            type: integer
-        type: object
-      uid:
-        type: string
-    type: object
-  types.PersistentVolumeClaimListResponse:
-    properties:
-      age:
-        type: string
-      hasUpdated:
-        type: boolean
-      name:
-        type: string
-      namespace:
-        type: string
-      spec:
-        properties:
-          accessModes:
-            items:
-              type: string
-            type: array
-          resources:
-            properties:
-              limits:
-                additionalProperties:
-                  type: string
-                type: object
-              requests:
-                additionalProperties:
-                  type: string
-                type: object
-            type: object
-          storageClassName:
-            type: string
-          volumeMode:
-            type: string
-        type: object
-      status:
-        properties:
-          phase:
-            type: string
-        type: object
-      uid:
-        type: string
-    type: object
-  types.PersistentVolumeListResponse:
-    properties:
-      age:
-        type: string
-      hasUpdated:
-        type: boolean
-      name:
-        type: string
-      spec:
-        properties:
-          accessModes:
-            items:
-              type: string
-            type: array
-          capacity:
-            additionalProperties:
-              type: string
-            type: object
-          storageClassName:
-            type: string
-          volumeMode:
-            type: string
-        type: object
-      status:
-        properties:
-          phase:
-            type: string
-        type: object
-      uid:
-        type: string
-    type: object
-  types.PodDisruptionBudgetListResponse:
-    properties:
-      age:
-        type: string
-      hasUpdated:
-        type: boolean
-      name:
-        type: string
-      namespace:
-        type: string
-      spec:
-        properties:
-          maxUnavailable:
-            type: string
-          minAvailable:
-            type: string
-        type: object
-      status:
-        properties:
-          currentHealthy:
-            type: integer
-          desiredHealthy:
-            type: integer
-          disruptionsAllowed:
-            type: integer
-          expectedPods:
-            type: integer
-        type: object
-      uid:
-        type: string
-    type: object
-  types.PodListResponse:
-    properties:
-      age:
-        type: string
-      clusterName:
-        type: string
-      configName:
-        type: string
-      cpu:
-        type: string
-      hasUpdated:
-        type: boolean
-      lastRestartAt:
-        type: string
-      lastRestartReason:
-        type: string
-      memory:
-        type: string
-      name:
-        type: string
-      namespace:
-        type: string
-      node:
-        type: string
-      podIP:
-        type: string
-      qos:
-        type: string
-      ready:
-        type: string
-      restarts:
-        type: string
-      status:
-        type: string
-      uid:
-        type: string
-    type: object
-  types.ReplicaSetListResponse:
-    properties:
-      age:
-        type: string
-      hasUpdated:
-        type: boolean
-      name:
-        type: string
-      namespace:
-        type: string
-      status:
-        properties:
-          availableReplicas:
-            type: integer
-          fullyLabeledReplicas:
-            type: integer
-          observedGeneration:
-            type: integer
-          readyReplicas:
-            type: integer
-          replicas:
-            type: integer
-        type: object
-      uid:
-        type: string
-    type: object
-  types.SecretListResponse:
-    properties:
-      age:
-        type: string
-      hasUpdated:
-        type: boolean
-      keys:
-        items:
-          type: string
-        type: array
-      name:
-        type: string
-      namespace:
-        type: string
-      type:
-        type: string
-      uid:
-        type: string
-    type: object
-  types.ServiceAccountListResponse:
-    properties:
-      age:
-        type: string
-      hasUpdated:
-        type: boolean
-      name:
-        type: string
-      namespace:
-        type: string
-      spec:
-        properties:
-          secrets:
-            type: integer
-        type: object
-      uid:
-        type: string
-    type: object
-  types.ServiceListResponse:
-    properties:
-      age:
-        type: string
-      hasUpdated:
-        type: boolean
-      name:
-        type: string
-      namespace:
-        type: string
-      spec:
-        properties:
-          clusterIP:
-            type: string
-          externalIPs:
-            type: string
-          internalTrafficPolicy:
-            type: string
-          ipFamilyPolicy:
-            type: string
-          ports:
-            type: string
-          sessionAffinity:
-            type: string
-          type:
-            type: string
-        type: object
-      uid:
-        type: string
-    type: object
-  types.StatefulSetListResponse:
-    properties:
-      age:
-        type: string
-      hasUpdated:
-        type: boolean
-      name:
-        type: string
-      namespace:
-        type: string
-      status:
-        properties:
-          availableReplicas:
-            type: integer
-          fullyLabeledReplicas:
-            type: integer
-          observedGeneration:
-            type: integer
-          readyReplicas:
-            type: integer
-          replicas:
-            type: integer
-        type: object
-      uid:
+      state:
+        description: '"running", "waiting", "terminated"'
         type: string
     type: object
 info:
@@ -1245,7 +1272,7 @@ paths:
           description: List of transformed ConfigMaps
           schema:
             items:
-              $ref: '#/definitions/types.ConfigMapListResponse'
+              $ref: '#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.ConfigMapListResponse'
             type: array
         "400":
           description: Bad request
@@ -1605,7 +1632,7 @@ paths:
           description: Stream of transformed ConfigMaps or JSON array
           schema:
             items:
-              $ref: '#/definitions/types.ConfigMapListResponse'
+              $ref: '#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.ConfigMapListResponse'
             type: array
         "400":
           description: Bad request
@@ -1881,7 +1908,7 @@ paths:
           description: Streaming CronJobs data
           schema:
             items:
-              $ref: '#/definitions/types.CronJobListResponse'
+              $ref: '#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.CronJobListResponse'
             type: array
         "400":
           description: Bad request - missing or invalid parameters
@@ -2919,7 +2946,7 @@ paths:
           description: DaemonSet pods
           schema:
             items:
-              $ref: '#/definitions/types.PodListResponse'
+              $ref: '#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.PodListResponse'
             type: array
         "400":
           description: Bad request - missing namespace parameter
@@ -3068,7 +3095,7 @@ paths:
           description: Stream of daemonset data
           schema:
             items:
-              $ref: '#/definitions/types.DaemonSetListResponse'
+              $ref: '#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.DaemonSetListResponse'
             type: array
         "400":
           description: Bad request - invalid parameters
@@ -3223,7 +3250,7 @@ paths:
           description: DaemonSet pods
           schema:
             items:
-              $ref: '#/definitions/types.PodListResponse'
+              $ref: '#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.PodListResponse'
             type: array
         "400":
           description: Bad request - invalid parameters
@@ -3650,7 +3677,7 @@ paths:
           description: Stream of deployment data
           schema:
             items:
-              $ref: '#/definitions/types.DeploymentListResponse'
+              $ref: '#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.DeploymentListResponse'
             type: array
         "400":
           description: Bad request - invalid parameters
@@ -4000,7 +4027,7 @@ paths:
         "200":
           description: Feature flags configuration
           schema:
-            $ref: '#/definitions/handlers.FeatureFlagsResponse'
+            $ref: '#/definitions/internal_api_handlers.FeatureFlagsResponse'
         "500":
           description: Internal server error
           schema:
@@ -4146,7 +4173,7 @@ paths:
           description: Stream of Helm releases or JSON array
           schema:
             items:
-              $ref: '#/definitions/types.HelmReleaseResponse'
+              $ref: '#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.HelmReleaseResponse'
             type: array
         "400":
           description: Bad request
@@ -4194,7 +4221,7 @@ paths:
           description: List of transformed HPAs
           schema:
             items:
-              $ref: '#/definitions/types.HPAListResponse'
+              $ref: '#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.HPAListResponse'
             type: array
         "400":
           description: Bad request
@@ -4558,7 +4585,7 @@ paths:
           description: Stream of transformed HPAs or JSON array
           schema:
             items:
-              $ref: '#/definitions/types.HPAListResponse'
+              $ref: '#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.HPAListResponse'
             type: array
         "400":
           description: Bad request
@@ -4750,7 +4777,7 @@ paths:
           description: Stream of ingress data
           schema:
             items:
-              $ref: '#/definitions/types.IngressListResponse'
+              $ref: '#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.IngressListResponse'
             type: array
         "400":
           description: Bad request - invalid parameters
@@ -5072,7 +5099,7 @@ paths:
           description: Job pods
           schema:
             items:
-              $ref: '#/definitions/types.PodListResponse'
+              $ref: '#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.PodListResponse'
             type: array
         "400":
           description: Bad request - missing or invalid parameters
@@ -5182,7 +5209,7 @@ paths:
           description: Streaming Jobs data
           schema:
             items:
-              $ref: '#/definitions/types.JobListResponse'
+              $ref: '#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.JobListResponse'
             type: array
         "400":
           description: Bad request - missing or invalid parameters
@@ -5905,7 +5932,7 @@ paths:
           description: Namespace pods
           schema:
             items:
-              $ref: '#/definitions/types.PodListResponse'
+              $ref: '#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.PodListResponse'
             type: array
         "400":
           description: Bad request - missing or invalid parameters
@@ -6006,7 +6033,7 @@ paths:
           description: Streaming Nodes data
           schema:
             items:
-              $ref: '#/definitions/cluster.NodeListResponse'
+              $ref: '#/definitions/internal_api_handlers_cluster.NodeListResponse'
             type: array
         "400":
           description: Bad request - missing or invalid parameters
@@ -6163,7 +6190,7 @@ paths:
         name: drainOptions
         required: true
         schema:
-          $ref: '#/definitions/cluster.NodeActionRequest'
+          $ref: '#/definitions/internal_api_handlers_cluster.NodeActionRequest'
       produces:
       - application/json
       responses:
@@ -6284,7 +6311,7 @@ paths:
           description: Node pods
           schema:
             items:
-              $ref: '#/definitions/types.PodListResponse'
+              $ref: '#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.PodListResponse'
             type: array
         "400":
           description: Bad request - missing or invalid parameters
@@ -6498,7 +6525,7 @@ paths:
           description: Stream of PVC data
           schema:
             items:
-              $ref: '#/definitions/types.PersistentVolumeClaimListResponse'
+              $ref: '#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.PersistentVolumeClaimListResponse'
             type: array
         "400":
           description: Bad request
@@ -6540,7 +6567,7 @@ paths:
           description: Stream of PV data
           schema:
             items:
-              $ref: '#/definitions/types.PersistentVolumeListResponse'
+              $ref: '#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.PersistentVolumeListResponse'
             type: array
         "400":
           description: Bad request
@@ -6733,7 +6760,7 @@ paths:
           description: List of transformed Pod Disruption Budgets
           schema:
             items:
-              $ref: '#/definitions/types.PodDisruptionBudgetListResponse'
+              $ref: '#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.PodDisruptionBudgetListResponse'
             type: array
         "400":
           description: Bad request
@@ -6834,7 +6861,7 @@ paths:
           description: Stream of transformed Pod Disruption Budgets or JSON array
           schema:
             items:
-              $ref: '#/definitions/types.PodDisruptionBudgetListResponse'
+              $ref: '#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.PodDisruptionBudgetListResponse'
             type: array
         "400":
           description: Bad request
@@ -6892,7 +6919,7 @@ paths:
           description: Stream of pod data
           schema:
             items:
-              $ref: '#/definitions/types.PodListResponse'
+              $ref: '#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.PodListResponse'
             type: array
         "400":
           description: Bad request
@@ -6975,6 +7002,64 @@ paths:
       summary: Execute Commands in Pod via WebSocket
       tags:
       - WebSocket
+  /api/v1/pods/{namespace}/{name}/restarts:
+    get:
+      consumes:
+      - application/json
+      description: Get detailed restart and termination information for all containers
+        in a pod
+      parameters:
+      - description: Namespace name
+        in: path
+        name: namespace
+        required: true
+        type: string
+      - description: Pod name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: Kubernetes configuration ID
+        in: query
+        name: config
+        required: true
+        type: string
+      - description: Cluster name
+        in: query
+        name: cluster
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Container restart information
+          schema:
+            items:
+              $ref: '#/definitions/internal_api_handlers_workloads.ContainerRestartInfo'
+            type: array
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Pod not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - KubeConfig: []
+      summary: Get Pod Container Restart Information
+      tags:
+      - Workloads
   /api/v1/portforward/sessions:
     get:
       consumes:
@@ -7247,7 +7332,7 @@ paths:
           description: ReplicaSet pods
           schema:
             items:
-              $ref: '#/definitions/types.PodListResponse'
+              $ref: '#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.PodListResponse'
             type: array
         "400":
           description: Bad request - missing or invalid parameters
@@ -7357,7 +7442,7 @@ paths:
           description: Streaming ReplicaSets data
           schema:
             items:
-              $ref: '#/definitions/types.ReplicaSetListResponse'
+              $ref: '#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.ReplicaSetListResponse'
             type: array
         "400":
           description: Bad request - missing or invalid parameters
@@ -7528,7 +7613,7 @@ paths:
           description: ReplicaSet pods
           schema:
             items:
-              $ref: '#/definitions/types.PodListResponse'
+              $ref: '#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.PodListResponse'
             type: array
         "400":
           description: Bad request - missing or invalid parameters
@@ -7639,7 +7724,7 @@ paths:
           description: List of transformed secrets
           schema:
             items:
-              $ref: '#/definitions/types.SecretListResponse'
+              $ref: '#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.SecretListResponse'
             type: array
         "400":
           description: Bad request
@@ -8002,7 +8087,7 @@ paths:
           description: Stream of transformed secrets or JSON array
           schema:
             items:
-              $ref: '#/definitions/types.SecretListResponse'
+              $ref: '#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.SecretListResponse'
             type: array
         "400":
           description: Bad request
@@ -8301,7 +8386,7 @@ paths:
           description: Stream of transformed Service Accounts or JSON array
           schema:
             items:
-              $ref: '#/definitions/types.ServiceAccountListResponse'
+              $ref: '#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.ServiceAccountListResponse'
             type: array
         "400":
           description: Bad request
@@ -8347,7 +8432,7 @@ paths:
           description: Stream of service data
           schema:
             items:
-              $ref: '#/definitions/types.ServiceListResponse'
+              $ref: '#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.ServiceListResponse'
             type: array
         "400":
           description: Bad request
@@ -8496,7 +8581,7 @@ paths:
           description: StatefulSet pods
           schema:
             items:
-              $ref: '#/definitions/types.PodListResponse'
+              $ref: '#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.PodListResponse'
             type: array
         "400":
           description: Bad request - missing namespace parameter
@@ -8710,7 +8795,7 @@ paths:
           description: Stream of statefulset data
           schema:
             items:
-              $ref: '#/definitions/types.StatefulSetListResponse'
+              $ref: '#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.StatefulSetListResponse'
             type: array
         "400":
           description: Bad request - invalid parameters
@@ -8865,7 +8950,7 @@ paths:
           description: StatefulSet pods
           schema:
             items:
-              $ref: '#/definitions/types.PodListResponse'
+              $ref: '#/definitions/github_com_Facets-cloud_kube-dash_internal_api_types.PodListResponse'
             type: array
         "400":
           description: Bad request - invalid parameters
@@ -9102,7 +9187,7 @@ paths:
         "200":
           description: Tracing configuration
           schema:
-            $ref: '#/definitions/config.TracingConfig'
+            $ref: '#/definitions/github_com_Facets-cloud_kube-dash_internal_config.TracingConfig'
       security:
       - BearerAuth: []
       summary: Get Tracing Configuration
@@ -9118,14 +9203,14 @@ paths:
         name: config
         required: true
         schema:
-          $ref: '#/definitions/config.TracingConfig'
+          $ref: '#/definitions/github_com_Facets-cloud_kube-dash_internal_config.TracingConfig'
       produces:
       - application/json
       responses:
         "200":
           description: Updated tracing configuration
           schema:
-            $ref: '#/definitions/config.TracingConfig'
+            $ref: '#/definitions/github_com_Facets-cloud_kube-dash_internal_config.TracingConfig'
         "400":
           description: Bad request - invalid configuration
           schema:

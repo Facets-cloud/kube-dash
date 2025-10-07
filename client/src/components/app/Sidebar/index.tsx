@@ -11,6 +11,7 @@ import { memo, useEffect, useState } from "react";
 import { useAppDispatch, useAppSelector } from "@/redux/hooks";
 import { useRuntimeFeatureFlags } from "@/hooks/useRuntimeFeatureFlags";
 import { useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
+import { useTabs } from "@/contexts/TabsContext";
 
 import { SidebarNavigator } from "./Navigator";
 import { SvgRenderer } from '../Common/SvgRenderer';
@@ -37,11 +38,13 @@ const Sidebar = memo(function ({ className }: SidebarProps) {
   const navigate = useNavigate();
   const routerForce = useRouter();
   const dispatch = useAppDispatch();
+  const { addTab, getTabByRoute, switchTab } = useTabs();
   const configName = router.location.pathname.split('/')[1];
   const queryParams = new URLSearchParams(router.location.search);
   const clusterName = queryParams.get('cluster') || '';
   const {
-    clusters
+    clusters,
+    loading: clustersLoading
   } = useAppSelector((state) => state.clusters);
   const {
     customResourcesNavigation
@@ -105,28 +108,64 @@ const Sidebar = memo(function ({ className }: SidebarProps) {
     }));
   };
 
-  const onNavClick = (routeValue: string) => {
+  const getIconForRoute = (routeValue: string): string => {
+    const iconMap: Record<string, string> = {
+      'pods': 'pod',
+      'deployments': 'deployment',
+      'services': 'service',
+      'configmaps': 'configmap',
+      'secrets': 'secret',
+      'daemonsets': 'deployment',
+      'statefulsets': 'deployment',
+      'replicasets': 'deployment',
+      'jobs': 'deployment',
+      'cronjobs': 'deployment',
+    };
+    return iconMap[routeValue.toLowerCase()] || 'pod';
+  };
+
+  const onNavClick = (routeValue: string, resourceName?: string) => {
     dispatch(resetListTableFilter());
     // Clear any existing permission errors when navigating to a different resource
     dispatch(clearPermissionError());
-    // setActiveTab(routeValue);
-    
+
+    let route = '';
+    let title = resourceName || routeValue;
+
     // Handle special routes differently
     if (routeValue === 'cloudshell') {
-      navigate({ to: `/${configName}/cloudshell?cluster=${encodeURIComponent(clusterName)}` });
+      route = `/${configName}/cloudshell?cluster=${encodeURIComponent(clusterName)}`;
     } else if (routeValue === 'helmcharts') {
-      navigate({ to: `/${configName}/helmcharts?cluster=${encodeURIComponent(clusterName)}` });
+      route = `/${configName}/helmcharts?cluster=${encodeURIComponent(clusterName)}`;
     } else if (routeValue === 'settings') {
-      navigate({ to: `/${configName}/settings?cluster=${encodeURIComponent(clusterName)}` });
+      route = `/${configName}/settings?cluster=${encodeURIComponent(clusterName)}`;
     } else if (routeValue === 'overview') {
-      navigate({ to: `/${configName}/overview?cluster=${encodeURIComponent(clusterName)}` });
+      route = `/${configName}/overview?cluster=${encodeURIComponent(clusterName)}`;
     } else if (routeValue === 'tools/tracing') {
-      navigate({ to: `/${configName}/tools/tracing?cluster=${encodeURIComponent(clusterName)}` });
+      route = `/${configName}/tools/tracing?cluster=${encodeURIComponent(clusterName)}`;
     } else if (routeValue === 'tools/tracing/settings') {
-      navigate({ to: `/${configName}/tools/tracing/settings?cluster=${encodeURIComponent(clusterName)}` });
+      route = `/${configName}/tools/tracing/settings?cluster=${encodeURIComponent(clusterName)}`;
     } else {
-      navigate({ to: `/${configName}/list?cluster=${encodeURIComponent(clusterName)}&resourcekind=${routeValue}` });
+      route = `/${configName}/list?cluster=${encodeURIComponent(clusterName)}&resourcekind=${routeValue}`;
     }
+
+    // Check if tab already exists for this route
+    const existingTab = getTabByRoute(route);
+    if (!existingTab) {
+      // Create new tab
+      addTab({
+        title,
+        route,
+        icon: getIconForRoute(routeValue),
+        resourceType: routeValue,
+        cluster: clusterName,
+        config: configName,
+      });
+    } else {
+      // Switch to existing tab
+      switchTab(existingTab.id);
+    }
+
     routerForce.invalidate();
   };
 
@@ -146,10 +185,10 @@ const Sidebar = memo(function ({ className }: SidebarProps) {
   };
 
   useEffect(() => {
-    if (!clusters.kubeConfigs) {
+    if (!clustersLoading && !clusters.kubeConfigs) {
       dispatch(fetchClusters());
     }
-  }, [clusters, dispatch]);
+  }, [dispatch, clustersLoading]);
 
   const getResourceIcon = (resourceType: string) => {
     switch (resourceType) {
@@ -246,7 +285,7 @@ const Sidebar = memo(function ({ className }: SidebarProps) {
                                             <Tooltip >
                                               <TooltipTrigger asChild>
                                                 <SidebarMenuSubButton asChild isActive={getActiveNav(routeValue, true)}>
-                                                  <a onClick={() => onNavClick(routeValue)}>
+                                                  <a onClick={() => onNavClick(routeValue, name)}>
                                                     <span className="text-gray-600 dark:text-gray-400">{name}</span>
                                                   </a>
                                                 </SidebarMenuSubButton>
@@ -278,7 +317,7 @@ const Sidebar = memo(function ({ className }: SidebarProps) {
                                         return (
                                           <DropdownMenuItem
                                             key={routeValue}
-                                            onClick={() => onNavClick(routeValue)}
+                                            onClick={() => onNavClick(routeValue, name)}
                                             className="gap-2 cursor-pointer text-gray-600 dark:text-gray-400"
                                           >
                                             {name}
@@ -307,7 +346,7 @@ const Sidebar = memo(function ({ className }: SidebarProps) {
                         <Tooltip >
                           <TooltipTrigger asChild>
                             <SidebarMenuButton className='group-data-[collapsible=icon]:justify-center' asChild tooltip='Definitions'>
-                              <a onClick={() => onNavClick('customresourcedefinitions')}>
+                              <a onClick={() => onNavClick('customresourcedefinitions', 'Definitions')}>
                                 {getResourceIcon('customresources')}
                                 <span className='truncate text-gray-800 dark:text-gray-200 group-data-[collapsible=icon]:hidden'>Definitions</span>
                               </a>

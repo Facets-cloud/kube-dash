@@ -117,7 +117,15 @@ func (h *PodLogsHandler) getClientAndConfig(c *gin.Context) (*kubernetes.Clients
 }
 
 // sendWebSocketMessage sends a message to the WebSocket connection
+// This function is NOT thread-safe and should be called through sendWebSocketMessageSafe
 func (h *PodLogsHandler) sendWebSocketMessage(conn *websocket.Conn, message interface{}) error {
+	return conn.WriteJSON(message)
+}
+
+// sendWebSocketMessageSafe sends a message to the WebSocket connection in a thread-safe manner
+func (h *PodLogsHandler) sendWebSocketMessageSafe(conn *websocket.Conn, writeMu *sync.Mutex, message interface{}) error {
+	writeMu.Lock()
+	defer writeMu.Unlock()
 	return conn.WriteJSON(message)
 }
 
@@ -288,6 +296,9 @@ func (h *PodLogsHandler) HandlePodLogs(c *gin.Context) {
 	h.tracingHelper.RecordSuccess(validationSpan, "Pod validation completed")
 	validationSpan.End()
 
+	// Create mutex for thread-safe WebSocket writes
+	var writeMu sync.Mutex
+
 	// Send connection established message
 	connectionMsg := ControlMessage{
 		Type: "connected",
@@ -298,7 +309,7 @@ func (h *PodLogsHandler) HandlePodLogs(c *gin.Context) {
 		},
 		Timestamp: time.Now(),
 	}
-	h.sendWebSocketMessage(conn, connectionMsg)
+	h.sendWebSocketMessageSafe(conn, &writeMu, connectionMsg)
 
 	// Child span for log streaming operations
 	streamCtx, streamSpan := h.tracingHelper.StartKubernetesAPISpan(validationCtx, "log_streaming", "pod", namespace)
@@ -339,7 +350,7 @@ func (h *PodLogsHandler) HandlePodLogs(c *gin.Context) {
 								Type:      "pong",
 								Timestamp: time.Now(),
 							}
-							h.sendWebSocketMessage(conn, pongMsg)
+							h.sendWebSocketMessageSafe(conn, &writeMu, pongMsg)
 						case "close":
 							// Client requested close
 							cancel()
@@ -352,7 +363,7 @@ func (h *PodLogsHandler) HandlePodLogs(c *gin.Context) {
 	}()
 
 	// Function to stream logs for a specific container with enhanced options
-	streamContainerLogs := func(containerName string, isPrevious bool, podInstance string) error {
+	streamContainerLogs := func(containerName string, isPrevious bool, podInstance string, writeMu *sync.Mutex) error {
 		// Build pod log options
 		podLogOptions := &v1.PodLogOptions{
 			Container: containerName,
@@ -388,7 +399,7 @@ func (h *PodLogsHandler) HandlePodLogs(c *gin.Context) {
 			},
 			Timestamp: time.Now(),
 		}
-		h.sendWebSocketMessage(conn, containerMsg)
+		h.sendWebSocketMessageSafe(conn, writeMu, containerMsg)
 
 		// Send previous logs start message if applicable
 		if isPrevious {
@@ -400,7 +411,7 @@ func (h *PodLogsHandler) HandlePodLogs(c *gin.Context) {
 				},
 				Timestamp: time.Now(),
 			}
-			h.sendWebSocketMessage(conn, previousStartMsg)
+			h.sendWebSocketMessageSafe(conn, writeMu, previousStartMsg)
 		}
 
 		scanner := bufio.NewScanner(stream)
@@ -434,7 +445,7 @@ func (h *PodLogsHandler) HandlePodLogs(c *gin.Context) {
 				}
 
 				// Send log message immediately
-				if err := h.sendWebSocketMessage(conn, logMsg); err != nil {
+				if err := h.sendWebSocketMessageSafe(conn, writeMu, logMsg); err != nil {
 					h.logger.WithError(err).Debug("Failed to send log message")
 					return err
 				}
@@ -458,7 +469,7 @@ func (h *PodLogsHandler) HandlePodLogs(c *gin.Context) {
 				},
 				Timestamp: time.Now(),
 			}
-			h.sendWebSocketMessage(conn, previousEndMsg)
+			h.sendWebSocketMessageSafe(conn, writeMu, previousEndMsg)
 		}
 
 		return nil
@@ -473,7 +484,7 @@ func (h *PodLogsHandler) HandlePodLogs(c *gin.Context) {
 				wg.Add(1)
 				go func(cName string) {
 					defer wg.Done()
-					if err := streamContainerLogs(cName, true, "previous"); err != nil {
+					if err := streamContainerLogs(cName, true, "previous", &writeMu); err != nil {
 						if streamingCtx.Err() == nil {
 							h.logger.WithError(err).WithField("container", cName).Error("Error streaming previous container logs")
 						}
@@ -493,13 +504,13 @@ func (h *PodLogsHandler) HandlePodLogs(c *gin.Context) {
 				},
 				Timestamp: time.Now(),
 			}
-			h.sendWebSocketMessage(conn, transitionMsg)
+			h.sendWebSocketMessageSafe(conn, &writeMu, transitionMsg)
 		}
 
 		// Then, stream current logs
 		for _, containerName := range containerNames {
 			go func(cName string) {
-				if err := streamContainerLogs(cName, false, "current"); err != nil {
+				if err := streamContainerLogs(cName, false, "current", &writeMu); err != nil {
 					if streamingCtx.Err() == nil {
 						h.logger.WithError(err).WithField("container", cName).Error("Error streaming current container logs")
 					}
@@ -539,5 +550,5 @@ func (h *PodLogsHandler) HandlePodLogs(c *gin.Context) {
 		},
 		Timestamp: time.Now(),
 	}
-	h.sendWebSocketMessage(conn, disconnectMsg)
+	h.sendWebSocketMessageSafe(conn, &writeMu, disconnectMsg)
 }

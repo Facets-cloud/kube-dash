@@ -5,3 +5,19 @@
 .xterm-screen {
   height: calc(100vh - 165px) !important;
 }
+
+/* Terminal styling for pod logs */
+.xterm {
+  height: 100% !important;
+  width: 100% !important;
+}
+
+.xterm-viewport {
+  overflow-y: auto !important;
+  background-color: transparent !important;
+}
+
+.xterm .xterm-screen {
+  height: 100% !important;
+  width: 100% !important;
+}

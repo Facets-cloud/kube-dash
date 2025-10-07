@@ -571,3 +571,143 @@ func (h *PodsHandler) GetPodExecByName(c *gin.Context) {
 	// The actual implementation is in the WebSocket handler
 	c.JSON(http.StatusOK, gin.H{"message": "WebSocket upgrade required for pod exec"})
 }
+
+// ContainerRestartInfo represents information about a container's restart/termination
+type ContainerRestartInfo struct {
+	ContainerName string                  `json:"containerName"`
+	RestartCount  int32                   `json:"restartCount"`
+	LastState     *ContainerStateInfo     `json:"lastState,omitempty"`
+	CurrentState  *ContainerStateInfo     `json:"currentState"`
+}
+
+// ContainerStateInfo represents the state of a container
+type ContainerStateInfo struct {
+	State      string    `json:"state"` // "running", "waiting", "terminated"
+	Reason     string    `json:"reason,omitempty"`
+	Message    string    `json:"message,omitempty"`
+	ExitCode   *int32    `json:"exitCode,omitempty"`
+	StartedAt  string    `json:"startedAt,omitempty"`
+	FinishedAt string    `json:"finishedAt,omitempty"`
+}
+
+// GetPodContainerRestartInfo returns restart/termination information for all containers in a pod
+// @Summary Get Pod Container Restart Information
+// @Description Get detailed restart and termination information for all containers in a pod
+// @Tags Workloads
+// @Accept json
+// @Produce json
+// @Param namespace path string true "Namespace name"
+// @Param name path string true "Pod name"
+// @Param config query string true "Kubernetes configuration ID"
+// @Param cluster query string false "Cluster name"
+// @Success 200 {array} ContainerRestartInfo "Container restart information"
+// @Failure 400 {object} map[string]string "Bad request"
+// @Failure 404 {object} map[string]string "Pod not found"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Security KubeConfig
+// @Router /api/v1/pods/{namespace}/{name}/restarts [get]
+func (h *PodsHandler) GetPodContainerRestartInfo(c *gin.Context) {
+	client, err := h.getClientAndConfig(c)
+	if err != nil {
+		h.logger.WithError(err).Error("Failed to get client for pod restart info")
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	name := c.Param("name")
+	namespace := c.Param("namespace")
+
+	pod, err := client.CoreV1().Pods(namespace).Get(c.Request.Context(), name, metav1.GetOptions{})
+	if err != nil {
+		h.logger.WithError(err).WithField("pod", name).WithField("namespace", namespace).Error("Failed to get pod for restart info")
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	var restartInfos []ContainerRestartInfo
+
+	// Process all container statuses (regular containers)
+	for _, containerStatus := range pod.Status.ContainerStatuses {
+		info := ContainerRestartInfo{
+			ContainerName: containerStatus.Name,
+			RestartCount:  containerStatus.RestartCount,
+			CurrentState:  extractContainerState(containerStatus.State),
+		}
+
+		// Add last state if container has been terminated before
+		if containerStatus.LastTerminationState.Terminated != nil ||
+		   containerStatus.LastTerminationState.Waiting != nil ||
+		   containerStatus.LastTerminationState.Running != nil {
+			info.LastState = extractContainerState(containerStatus.LastTerminationState)
+		}
+
+		restartInfos = append(restartInfos, info)
+	}
+
+	// Process init container statuses
+	for _, containerStatus := range pod.Status.InitContainerStatuses {
+		info := ContainerRestartInfo{
+			ContainerName: containerStatus.Name,
+			RestartCount:  containerStatus.RestartCount,
+			CurrentState:  extractContainerState(containerStatus.State),
+		}
+
+		if containerStatus.LastTerminationState.Terminated != nil ||
+		   containerStatus.LastTerminationState.Waiting != nil ||
+		   containerStatus.LastTerminationState.Running != nil {
+			info.LastState = extractContainerState(containerStatus.LastTerminationState)
+		}
+
+		restartInfos = append(restartInfos, info)
+	}
+
+	// Process ephemeral container statuses
+	for _, containerStatus := range pod.Status.EphemeralContainerStatuses {
+		info := ContainerRestartInfo{
+			ContainerName: containerStatus.Name,
+			RestartCount:  containerStatus.RestartCount,
+			CurrentState:  extractContainerState(containerStatus.State),
+		}
+
+		if containerStatus.LastTerminationState.Terminated != nil ||
+		   containerStatus.LastTerminationState.Waiting != nil ||
+		   containerStatus.LastTerminationState.Running != nil {
+			info.LastState = extractContainerState(containerStatus.LastTerminationState)
+		}
+
+		restartInfos = append(restartInfos, info)
+	}
+
+	c.JSON(http.StatusOK, restartInfos)
+}
+
+// extractContainerState extracts state information from a ContainerState
+func extractContainerState(state v1.ContainerState) *ContainerStateInfo {
+	if state.Running != nil {
+		return &ContainerStateInfo{
+			State:     "running",
+			StartedAt: state.Running.StartedAt.Format(time.RFC3339),
+		}
+	}
+
+	if state.Waiting != nil {
+		return &ContainerStateInfo{
+			State:   "waiting",
+			Reason:  state.Waiting.Reason,
+			Message: state.Waiting.Message,
+		}
+	}
+
+	if state.Terminated != nil {
+		return &ContainerStateInfo{
+			State:      "terminated",
+			Reason:     state.Terminated.Reason,
+			Message:    state.Terminated.Message,
+			ExitCode:   &state.Terminated.ExitCode,
+			StartedAt:  state.Terminated.StartedAt.Format(time.RFC3339),
+			FinishedAt: state.Terminated.FinishedAt.Format(time.RFC3339),
+		}
+	}
+
+	return nil
+}

@@ -1,6 +1,6 @@
 import './index.css';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { resetAllStates, useAppDispatch, useAppSelector } from '@/redux/hooks';
@@ -23,7 +23,6 @@ import { resetDeleteConfig } from '@/data/KwClusters/DeleteConfigSlice';
 import { toast } from "sonner";
 import { useNavigate } from '@tanstack/react-router';
 import { useRouterState } from '@tanstack/react-router';
-import { useRef } from 'react';
 
 export function KubeConfiguration() {
   const {
@@ -46,6 +45,9 @@ export function KubeConfiguration() {
   const navigate = useNavigate();
   const router = useRouterState();
   const hasShownConfigNotFoundToast = useRef(false);
+  const hasValidated = useRef(false);
+  const emptyClusterRef = useRef<Clusters>({ kubeConfigs: {}, version: '' });
+  const hasFetchedClusters = useRef(false);
 
   // Check if current route's config exists and redirect if it doesn't
   useEffect(() => {
@@ -76,24 +78,30 @@ export function KubeConfiguration() {
   }, [clusters, navigate, router.location.pathname]);
 
   // Merge validation results with cluster data
-  const getMergedClusters = () => {
+  const mergedClusters = useMemo(() => {
     try {
-      if (!validationResponse || !clusters || !clusters.kubeConfigs) {
-        return clusters || { kubeConfigs: {}, version: '' };
+      // Return stable empty reference when no clusters
+      if (!clusters || !clusters.kubeConfigs || Object.keys(clusters.kubeConfigs).length === 0) {
+        return emptyClusterRef.current;
+      }
+
+      // If no validation response yet, return clusters as-is
+      if (!validationResponse) {
+        return clusters;
       }
 
       // Use deep clone to avoid mutating the original state
-      const mergedClusters = deepClone(clusters);
-      
-      if (mergedClusters?.kubeConfigs) {
-        Object.keys(mergedClusters.kubeConfigs).forEach(configId => {
+      const merged = deepClone(clusters);
+
+      if (merged?.kubeConfigs) {
+        Object.keys(merged.kubeConfigs).forEach(configId => {
           const configValidation = validationResponse.validationResults?.[configId];
-          if (configValidation && mergedClusters.kubeConfigs[configId]?.clusters) {
-            Object.keys(mergedClusters.kubeConfigs[configId].clusters).forEach(contextName => {
+          if (configValidation && merged.kubeConfigs[configId]?.clusters) {
+            Object.keys(merged.kubeConfigs[configId].clusters).forEach(contextName => {
               const clusterValidation = configValidation.clusterStatus?.[contextName];
               if (clusterValidation) {
-                mergedClusters.kubeConfigs[configId].clusters[contextName] = {
-                  ...mergedClusters.kubeConfigs[configId].clusters[contextName],
+                merged.kubeConfigs[configId].clusters[contextName] = {
+                  ...merged.kubeConfigs[configId].clusters[contextName],
                   reachable: clusterValidation.reachable,
                   error: clusterValidation.error
                 };
@@ -103,19 +111,20 @@ export function KubeConfiguration() {
         });
       }
 
-      return mergedClusters;
+      return merged;
     } catch (error) {
       console.error('Error in getMergedClusters:', error);
       // Return original clusters if there's an error
-      return clusters || { kubeConfigs: {}, version: '' };
+      return clusters || emptyClusterRef.current;
     }
-  };
-
-  const mergedClusters = getMergedClusters();
+  }, [clusters, validationResponse]);
 
   useEffect(() => {
-    dispatch(fetchClusters());
-    dispatch(resetAllStates());
+    if (!hasFetchedClusters.current) {
+      hasFetchedClusters.current = true;
+      dispatch(resetAllStates());
+      dispatch(fetchClusters());
+    }
   }, [dispatch]);
 
   useEffect(() => {
@@ -123,16 +132,22 @@ export function KubeConfiguration() {
       setFilteredClusters(mergedClusters);
     } catch (error) {
       console.error('Error setting filtered clusters:', error);
-      setFilteredClusters(clusters || { kubeConfigs: {}, version: '' });
+      setFilteredClusters(emptyClusterRef.current);
     }
-  }, [mergedClusters, clusters]);
+  }, [mergedClusters]);
 
-  // Validate all configs when clusters are loaded
+  // Validate all configs when clusters are loaded (only once)
   useEffect(() => {
-    if (clusters?.kubeConfigs && Object.keys(clusters.kubeConfigs).length > 0) {
+    const configCount = Object.keys(clusters?.kubeConfigs || {}).length;
+
+    if (configCount > 0 && !hasValidated.current) {
+      hasValidated.current = true;
       dispatch(validateAllConfigs());
+    } else if (configCount === 0) {
+      // Reset validation flag when no configs exist
+      hasValidated.current = false;
     }
-  }, [clusters, dispatch]);
+  }, [Object.keys(clusters?.kubeConfigs || {}).sort().join(','), dispatch]);
 
   // Handle validation errors
   useEffect(() => {
@@ -175,6 +190,8 @@ export function KubeConfiguration() {
   };
 
   const handleRefreshValidation = () => {
+    hasValidated.current = false;
+    hasFetchedClusters.current = true; // Mark as fetched to avoid duplicates
     dispatch(fetchClusters());
     dispatch(validateAllConfigs());
   };
@@ -185,6 +202,7 @@ export function KubeConfiguration() {
       toast.error("Failure", {
         description: error.message,
       });
+      hasFetchedClusters.current = true;
       dispatch(fetchClusters());
       dispatch(resetDeleteConfig());
     } else if (deleteConfigResponse.message) {
@@ -194,6 +212,7 @@ export function KubeConfiguration() {
       dispatch(resetDeleteConfig());
       // Add a small delay before fetching clusters to prevent race conditions
       setTimeout(() => {
+        hasFetchedClusters.current = true;
         dispatch(fetchClusters());
       }, 100);
     }
