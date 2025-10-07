@@ -30,6 +30,7 @@ import { useRouterState } from "@tanstack/react-router";
 import { getEventStreamUrl, createEventStreamQueryObject } from "@/utils/MiscUtils";
 import { NAMESPACES_ENDPOINT } from "@/constants/ApiConstants";
 import { updateNamspaces } from "@/data/Clusters/Namespaces/NamespacesSlice";
+import { TabBar } from "@/components/app/TabBar";
 
 type DataTableToolbarProps<TData> = {
   table: Table<TData>;
@@ -121,9 +122,10 @@ export function DataTableToolbar<TData>({
   const isFiltered = table.getState().columnFilters.length > 0;
 
   return (
-    <div className="flex items-center justify-between px-2 py-2">
-      <div className="flex flex-1 items-center space-x-2">
-        <SidebarTrigger />
+    <>
+      <div className="flex items-center justify-between px-2 py-2">
+        <div className="flex flex-1 items-center space-x-2">
+          <SidebarTrigger />
         <Separator orientation="vertical" className="mr-2 h-4 ml-1" />
         <div className="relative w-full basis-7/12">
           <DebouncedInput
@@ -265,6 +267,8 @@ export function DataTableToolbar<TData>({
         />
       )}
       <AddResource />
-    </div>
+      </div>
+      <TabBar />
+    </>
   );
 }

@@ -8,6 +8,8 @@ import { PermissionErrorPage } from "./components/app/Common/PermissionErrorPage
 import { RootState } from "./redux/store";
 import { clearPermissionError } from "./data/PermissionErrors/PermissionErrorsSlice";
 import { ThemeModeSelector } from "@/components/app/Common/ThemeModeSelector";
+import { useTabKeyboardShortcuts } from "./hooks/useTabKeyboardShortcuts";
+import { TabsProvider } from "./contexts/TabsContext";
 
 export function App() {
   const dispatch = useAppDispatch();
@@ -48,6 +50,28 @@ export function App() {
     // Optionally refresh the page or reconnect to the event source
     window.location.reload();
   };
+
+  return (
+    <TabsProvider>
+      <AppContent
+        currentError={currentError}
+        isPermissionErrorVisible={isPermissionErrorVisible}
+        handlePermissionErrorRetry={handlePermissionErrorRetry}
+      />
+    </TabsProvider>
+  );
+}
+
+function AppContent({
+  currentError,
+  isPermissionErrorVisible,
+  handlePermissionErrorRetry,
+}: {
+  currentError: any;
+  isPermissionErrorVisible: boolean;
+  handlePermissionErrorRetry: () => void;
+}) {
+  useTabKeyboardShortcuts();
 
   return (
     <>
