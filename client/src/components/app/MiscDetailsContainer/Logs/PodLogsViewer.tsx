@@ -45,6 +45,8 @@ interface PodLogsViewerProps {
   allContainers?: boolean;
   className?: string;
   podDetails?: PodDetails;
+  viewControls?: React.ReactNode;
+  isFullscreen?: boolean;
 }
 
 interface LogEntry extends LogMessage {
@@ -337,6 +339,8 @@ export const PodLogsViewer: React.FC<PodLogsViewerProps> = ({
   allContainers = false,
   className,
   podDetails,
+  viewControls,
+  isFullscreen = false,
 }) => {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [showTimestamps, setShowTimestamps] = useState(true);
@@ -891,6 +895,13 @@ export const PodLogsViewer: React.FC<PodLogsViewerProps> = ({
           >
             <Trash2 className="w-4 h-4" />
           </Button>
+
+          {viewControls && (
+            <>
+              <Separator orientation="vertical" className="h-6" />
+              {viewControls}
+            </>
+          )}
         </div>
         
         {/* Status */}
@@ -948,9 +959,12 @@ export const PodLogsViewer: React.FC<PodLogsViewerProps> = ({
             </div>
           </div>
         ) : (
-          <div 
+          <div
             ref={scrollAreaRef}
-            className="h-full overflow-auto scrollbar-active max-h-[calc(100vh-20rem)]"
+            className={cn(
+              "h-full overflow-auto scrollbar-active",
+              !isFullscreen && "max-h-[calc(100vh-20rem)]"
+            )}
             onScroll={handleScroll}
           >
             <div className="space-y-0">
