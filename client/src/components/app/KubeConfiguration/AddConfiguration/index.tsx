@@ -754,7 +754,7 @@ const AddConfig = () => {
                             Hold Cmd (Mac) or Ctrl (Windows/Linux) to select multiple files
                           </p>
                         </div>
-                      {selectedFiles.length > 0 && (
+                      {selectedFiles.length > 1 && (
                         <div className="mt-2">
                           <p className="text-sm text-muted-foreground mb-2">
                             Selected {selectedFiles.length} file{selectedFiles.length > 1 ? 's' : ''}:
