@@ -30,7 +30,6 @@ import { useRouterState } from "@tanstack/react-router";
 import { getEventStreamUrl, createEventStreamQueryObject } from "@/utils/MiscUtils";
 import { NAMESPACES_ENDPOINT } from "@/constants/ApiConstants";
 import { updateNamspaces } from "@/data/Clusters/Namespaces/NamespacesSlice";
-import { TabBar } from "@/components/app/TabBar";
 
 type DataTableToolbarProps<TData> = {
   table: Table<TData>;
@@ -268,7 +267,6 @@ export function DataTableToolbar<TData>({
       )}
       <AddResource />
       </div>
-      <TabBar />
     </>
   );
 }

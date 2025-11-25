@@ -9,7 +9,6 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@hello-pangea/dnd": "^18.0.1",
     "@monaco-editor/react": "^4.6.0",
     "@radix-ui/react-accordion": "^1.1.2",
     "@radix-ui/react-alert-dialog": "^1.1.14",
@@ -57,7 +56,6 @@
     "react-diff-view": "^3.3.2",
     "react-dom": "^18.2.0",
     "react-highlight-words": "^0.20.0",
-    "react-hotkeys-hook": "^5.1.0",
     "react-redux": "^9.0.4",
     "react-resizable-panels": "^1.0.7",
     "react-use-websocket": "^4.8.1",

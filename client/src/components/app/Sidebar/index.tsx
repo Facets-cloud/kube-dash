@@ -11,7 +11,6 @@ import { memo, useEffect, useState } from "react";
 import { useAppDispatch, useAppSelector } from "@/redux/hooks";
 import { useRuntimeFeatureFlags } from "@/hooks/useRuntimeFeatureFlags";
 import { useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
-import { useTabs } from "@/contexts/TabsContext";
 
 import { SidebarNavigator } from "./Navigator";
 import { SvgRenderer } from '../Common/SvgRenderer';
@@ -38,7 +37,6 @@ const Sidebar = memo(function ({ className }: SidebarProps) {
   const navigate = useNavigate();
   const routerForce = useRouter();
   const dispatch = useAppDispatch();
-  const { addTab, getTabByRoute, switchTab } = useTabs();
   const configName = router.location.pathname.split('/')[1];
   const queryParams = new URLSearchParams(router.location.search);
   const clusterName = queryParams.get('cluster') || '';
@@ -108,62 +106,26 @@ const Sidebar = memo(function ({ className }: SidebarProps) {
     }));
   };
 
-  const getIconForRoute = (routeValue: string): string => {
-    const iconMap: Record<string, string> = {
-      'pods': 'pod',
-      'deployments': 'deployment',
-      'services': 'service',
-      'configmaps': 'configmap',
-      'secrets': 'secret',
-      'daemonsets': 'deployment',
-      'statefulsets': 'deployment',
-      'replicasets': 'deployment',
-      'jobs': 'deployment',
-      'cronjobs': 'deployment',
-    };
-    return iconMap[routeValue.toLowerCase()] || 'pod';
-  };
-
-  const onNavClick = (routeValue: string, resourceName?: string) => {
+  const onNavClick = (routeValue: string) => {
     dispatch(resetListTableFilter());
     // Clear any existing permission errors when navigating to a different resource
     dispatch(clearPermissionError());
 
-    let route = '';
-    let title = resourceName || routeValue;
-
     // Handle special routes differently
     if (routeValue === 'cloudshell') {
-      route = `/${configName}/cloudshell?cluster=${encodeURIComponent(clusterName)}`;
+      navigate({ to: `/${configName}/cloudshell?cluster=${encodeURIComponent(clusterName)}` });
     } else if (routeValue === 'helmcharts') {
-      route = `/${configName}/helmcharts?cluster=${encodeURIComponent(clusterName)}`;
+      navigate({ to: `/${configName}/helmcharts?cluster=${encodeURIComponent(clusterName)}` });
     } else if (routeValue === 'settings') {
-      route = `/${configName}/settings?cluster=${encodeURIComponent(clusterName)}`;
+      navigate({ to: `/${configName}/settings?cluster=${encodeURIComponent(clusterName)}` });
     } else if (routeValue === 'overview') {
-      route = `/${configName}/overview?cluster=${encodeURIComponent(clusterName)}`;
+      navigate({ to: `/${configName}/overview?cluster=${encodeURIComponent(clusterName)}` });
     } else if (routeValue === 'tools/tracing') {
-      route = `/${configName}/tools/tracing?cluster=${encodeURIComponent(clusterName)}`;
+      navigate({ to: `/${configName}/tools/tracing?cluster=${encodeURIComponent(clusterName)}` });
     } else if (routeValue === 'tools/tracing/settings') {
-      route = `/${configName}/tools/tracing/settings?cluster=${encodeURIComponent(clusterName)}`;
+      navigate({ to: `/${configName}/tools/tracing/settings?cluster=${encodeURIComponent(clusterName)}` });
     } else {
-      route = `/${configName}/list?cluster=${encodeURIComponent(clusterName)}&resourcekind=${routeValue}`;
-    }
-
-    // Check if tab already exists for this route
-    const existingTab = getTabByRoute(route);
-    if (!existingTab) {
-      // Create new tab
-      addTab({
-        title,
-        route,
-        icon: getIconForRoute(routeValue),
-        resourceType: routeValue,
-        cluster: clusterName,
-        config: configName,
-      });
-    } else {
-      // Switch to existing tab
-      switchTab(existingTab.id);
+      navigate({ to: `/${configName}/list?cluster=${encodeURIComponent(clusterName)}&resourcekind=${routeValue}` });
     }
 
     routerForce.invalidate();
@@ -285,7 +247,7 @@ const Sidebar = memo(function ({ className }: SidebarProps) {
                                             <Tooltip >
                                               <TooltipTrigger asChild>
                                                 <SidebarMenuSubButton asChild isActive={getActiveNav(routeValue, true)}>
-                                                  <a onClick={() => onNavClick(routeValue, name)}>
+                                                  <a onClick={() => onNavClick(routeValue)}>
                                                     <span className="text-gray-600 dark:text-gray-400">{name}</span>
                                                   </a>
                                                 </SidebarMenuSubButton>
@@ -317,7 +279,7 @@ const Sidebar = memo(function ({ className }: SidebarProps) {
                                         return (
                                           <DropdownMenuItem
                                             key={routeValue}
-                                            onClick={() => onNavClick(routeValue, name)}
+                                            onClick={() => onNavClick(routeValue)}
                                             className="gap-2 cursor-pointer text-gray-600 dark:text-gray-400"
                                           >
                                             {name}
@@ -346,7 +308,7 @@ const Sidebar = memo(function ({ className }: SidebarProps) {
                         <Tooltip >
                           <TooltipTrigger asChild>
                             <SidebarMenuButton className='group-data-[collapsible=icon]:justify-center' asChild tooltip='Definitions'>
-                              <a onClick={() => onNavClick('customresourcedefinitions', 'Definitions')}>
+                              <a onClick={() => onNavClick('customresourcedefinitions')}>
                                 {getResourceIcon('customresources')}
                                 <span className='truncate text-gray-800 dark:text-gray-200 group-data-[collapsible=icon]:hidden'>Definitions</span>
                               </a>
