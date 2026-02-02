@@ -27,7 +27,8 @@ import { DataTableToolbar } from "@/components/app/Table/TableToolbar";
 import { RootState } from "@/redux/store";
 
 import { useAppSelector } from "@/redux/hooks";
-import { CUSTOM_RESOURCES_LIST_ENDPOINT } from "@/constants";
+import { CUSTOM_RESOURCES_LIST_ENDPOINT, NODES_ENDPOINT } from "@/constants";
+import { cn } from "@/lib/utils";
 
 type DataTableProps<TData, TValue> = {
   columns: ColumnDef<TData, TValue>[];
@@ -296,6 +297,27 @@ export function DataTable<TData, TValue>({
                     )}
                     data-state={row.getIsSelected() && 'selected'}
                     style={shouldVirtualize ? { height: rowHeight } : undefined}
+                    className={cn(
+                      // Critical issues: red background
+                      instanceType === NODES_ENDPOINT &&
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        (row.original as any)?.hasIssues &&
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        (row.original as any)?.issueTypes?.some((type: string) =>
+                          ['NodeNotReady', 'MemoryPressure', 'NetworkUnavailable'].includes(type)
+                        ) &&
+                        'bg-red-50 dark:bg-red-950/20 hover:bg-red-100 dark:hover:bg-red-950/30',
+
+                      // Warning issues: yellow background
+                      instanceType === NODES_ENDPOINT &&
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        (row.original as any)?.hasIssues &&
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        !(row.original as any)?.issueTypes?.some((type: string) =>
+                          ['NodeNotReady', 'MemoryPressure', 'NetworkUnavailable'].includes(type)
+                        ) &&
+                        'bg-yellow-50 dark:bg-yellow-950/20 hover:bg-yellow-100 dark:hover:bg-yellow-950/30'
+                    )}
                   >
                     {row.getVisibleCells().map((cell) => (
                       <TableCell key={cell.id}>

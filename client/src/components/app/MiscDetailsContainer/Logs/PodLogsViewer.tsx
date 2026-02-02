@@ -11,6 +11,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 import { toast } from 'sonner';
+import './index.css';
 
 import {
   Download,
@@ -279,6 +280,7 @@ const LogLine: React.FC<{
     <div
       className={cn(
         'flex items-start gap-2 px-3 py-1 text-sm font-mono hover:bg-muted/50 group border-b border-border/20',
+        'log-line-light',
         log.searchMatch && 'bg-yellow-50 dark:bg-yellow-900/20',
         log.isPrevious && 'bg-blue-50 dark:bg-blue-900/10 border-l-2 border-l-blue-500'
       )}

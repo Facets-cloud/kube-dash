@@ -65,7 +65,7 @@ func Load() *Config {
 			Port:         getEnv("PORT", "7080"),
 			Host:         getEnv("HOST", "0.0.0.0"),
 			ReadTimeout:  getEnvAsInt("SERVER_READ_TIMEOUT", 60),
-			WriteTimeout: getEnvAsInt("SERVER_WRITE_TIMEOUT", 60),
+			WriteTimeout: getEnvAsInt("SERVER_WRITE_TIMEOUT", 3600),
 			IdleTimeout:  getEnvAsInt("SERVER_IDLE_TIMEOUT", 120),
 		},
 		Logging: LoggingConfig{

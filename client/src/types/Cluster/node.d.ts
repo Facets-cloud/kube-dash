@@ -1,3 +1,18 @@
+type NodeConditionInfo = {
+  type: string;
+  status: string;
+  reason?: string;
+  message?: string;
+  lastTransitionTime?: string;
+};
+
+type NodeIssue = {
+  type: string;
+  severity: "critical" | "warning";
+  message: string;
+  reason: string;
+};
+
 type NodeListResponse = {
   age: string,
   hasUpdated: boolean,
@@ -7,13 +22,24 @@ type NodeListResponse = {
   spec: {
       podCIDR: string,
       podCIDRs: string[],
-      providerID: string
+      providerID: string,
+      unschedulable: boolean
   },
   status: {
       addresses: {
           internalIP: string
       },
-      conditionStatus: "True" | "False" | "Unkown",
+      conditionStatus: "True" | "False" | "Unknown",
+      conditions?: NodeConditionInfo[],
+      issues?: NodeIssue[],
+      capacity?: {
+          storage?: string,
+          ephemeralStorage?: string
+      },
+      allocatable?: {
+          storage?: string,
+          ephemeralStorage?: string
+      },
       nodeInfo: {
           architecture: string,
           bootID: string,
@@ -45,7 +71,14 @@ type NodeList = {
   machineID: string,
   operatingSystem: string,
   osImage: string,
-  systemUUID: string
+  systemUUID: string,
+  uid: string,
+  hasIssues: boolean,
+  issueCount: number,
+  issueTypes: string[],
+  storage: string,
+  storagePercentage: number,
+  unschedulable: boolean
 };
 
 type NodesListHeaders = NodeList;
@@ -335,6 +368,10 @@ type NodeDetailsStatus = {
       } | null)[]
     | null
   /**
+   * Issues detected on this node based on condition analysis
+   */
+  issues?: NodeIssue[] | null
+  /**
    * NodeConfigStatus describes the status of the config assigned by Node.Spec.ConfigSource.
    */
   config?: {
@@ -595,9 +632,12 @@ type NodeDetails = {
 }
 
 export {
+  NodeConditionInfo,
   NodeDetails,
   NodeDetailsMetadata,
   NodeDetailsSpec,
+  NodeDetailsStatus,
+  NodeIssue,
   NodeList,
   NodesListHeaders,
   NodeListResponse,

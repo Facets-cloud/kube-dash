@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -22,6 +23,23 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
+// NodeConditionInfo represents information about a node condition
+type NodeConditionInfo struct {
+	Type               string `json:"type"`
+	Status             string `json:"status"`
+	Reason             string `json:"reason,omitempty"`
+	Message            string `json:"message,omitempty"`
+	LastTransitionTime string `json:"lastTransitionTime,omitempty"`
+}
+
+// NodeIssue represents a detected issue with a node
+type NodeIssue struct {
+	Type     string `json:"type"`
+	Severity string `json:"severity"` // "critical" or "warning"
+	Message  string `json:"message"`
+	Reason   string `json:"reason"`
+}
+
 // NodeListResponse represents the response format expected by the frontend
 type NodeListResponse struct {
 	Age             string   `json:"age"`
@@ -30,16 +48,27 @@ type NodeListResponse struct {
 	ResourceVersion string   `json:"resourceVersion"`
 	Roles           []string `json:"roles"`
 	Spec            struct {
-		PodCIDR    string   `json:"podCIDR"`
-		PodCIDRs   []string `json:"podCIDRs"`
-		ProviderID string   `json:"providerID"`
+		PodCIDR       string   `json:"podCIDR"`
+		PodCIDRs      []string `json:"podCIDRs"`
+		ProviderID    string   `json:"providerID"`
+		Unschedulable bool     `json:"unschedulable"`
 	} `json:"spec"`
 	Status struct {
 		Addresses struct {
 			InternalIP string `json:"internalIP"`
 		} `json:"addresses"`
-		ConditionStatus string `json:"conditionStatus"`
-		NodeInfo        struct {
+		ConditionStatus string              `json:"conditionStatus"`
+		Conditions      []NodeConditionInfo `json:"conditions,omitempty"`
+		Issues          []NodeIssue         `json:"issues,omitempty"`
+		Capacity        struct {
+			Storage          string `json:"storage,omitempty"`
+			EphemeralStorage string `json:"ephemeralStorage,omitempty"`
+		} `json:"capacity"`
+		Allocatable struct {
+			Storage          string `json:"storage,omitempty"`
+			EphemeralStorage string `json:"ephemeralStorage,omitempty"`
+		} `json:"allocatable"`
+		NodeInfo struct {
 			Architecture            string `json:"architecture"`
 			BootID                  string `json:"bootID"`
 			ContainerRuntimeVersion string `json:"containerRuntimeVersion"`
@@ -137,13 +166,73 @@ func (h *NodesHandler) transformNodeToResponse(node *v1.Node) NodeListResponse {
 		}
 	}
 
-	// Determine condition status
+	// Determine condition status and extract all conditions
 	conditionStatus := "Unknown"
+	var conditions []NodeConditionInfo
+	var issues []NodeIssue
+
 	if node.Status.Conditions != nil {
 		for _, condition := range node.Status.Conditions {
-			if condition.Type == v1.NodeReady {
+			// Add to conditions array
+			conditionInfo := NodeConditionInfo{
+				Type:    string(condition.Type),
+				Status:  string(condition.Status),
+				Reason:  condition.Reason,
+				Message: condition.Message,
+			}
+			if condition.LastTransitionTime.Time != (time.Time{}) {
+				conditionInfo.LastTransitionTime = condition.LastTransitionTime.Time.Format(time.RFC3339)
+			}
+			conditions = append(conditions, conditionInfo)
+
+			// Check for issues
+			switch condition.Type {
+			case v1.NodeReady:
 				conditionStatus = string(condition.Status)
-				break
+				if condition.Status != v1.ConditionTrue {
+					issues = append(issues, NodeIssue{
+						Type:     "NodeNotReady",
+						Severity: "critical",
+						Message:  condition.Message,
+						Reason:   condition.Reason,
+					})
+				}
+			case v1.NodeMemoryPressure:
+				if condition.Status == v1.ConditionTrue {
+					issues = append(issues, NodeIssue{
+						Type:     string(condition.Type),
+						Severity: "critical",
+						Message:  condition.Message,
+						Reason:   condition.Reason,
+					})
+				}
+			case v1.NodeDiskPressure:
+				if condition.Status == v1.ConditionTrue {
+					issues = append(issues, NodeIssue{
+						Type:     string(condition.Type),
+						Severity: "warning",
+						Message:  condition.Message,
+						Reason:   condition.Reason,
+					})
+				}
+			case v1.NodePIDPressure:
+				if condition.Status == v1.ConditionTrue {
+					issues = append(issues, NodeIssue{
+						Type:     string(condition.Type),
+						Severity: "warning",
+						Message:  condition.Message,
+						Reason:   condition.Reason,
+					})
+				}
+			case v1.NodeNetworkUnavailable:
+				if condition.Status == v1.ConditionTrue {
+					issues = append(issues, NodeIssue{
+						Type:     string(condition.Type),
+						Severity: "critical",
+						Message:  condition.Message,
+						Reason:   condition.Reason,
+					})
+				}
 			}
 		}
 	}
@@ -170,10 +259,13 @@ func (h *NodesHandler) transformNodeToResponse(node *v1.Node) NodeListResponse {
 	if node.Spec.ProviderID != "" {
 		response.Spec.ProviderID = node.Spec.ProviderID
 	}
+	response.Spec.Unschedulable = node.Spec.Unschedulable
 
 	// Set status fields
 	response.Status.Addresses.InternalIP = internalIP
 	response.Status.ConditionStatus = conditionStatus
+	response.Status.Conditions = conditions
+	response.Status.Issues = issues
 	response.Status.NodeInfo.Architecture = nodeInfo.Architecture
 	response.Status.NodeInfo.BootID = nodeInfo.BootID
 	response.Status.NodeInfo.ContainerRuntimeVersion = nodeInfo.ContainerRuntimeVersion
@@ -184,6 +276,25 @@ func (h *NodesHandler) transformNodeToResponse(node *v1.Node) NodeListResponse {
 	response.Status.NodeInfo.OperatingSystem = nodeInfo.OperatingSystem
 	response.Status.NodeInfo.OSImage = nodeInfo.OSImage
 	response.Status.NodeInfo.SystemUUID = nodeInfo.SystemUUID
+
+	// Extract storage information
+	if node.Status.Capacity != nil {
+		if storage, ok := node.Status.Capacity[v1.ResourceStorage]; ok {
+			response.Status.Capacity.Storage = storage.String()
+		}
+		if ephemeralStorage, ok := node.Status.Capacity[v1.ResourceEphemeralStorage]; ok {
+			response.Status.Capacity.EphemeralStorage = ephemeralStorage.String()
+		}
+	}
+
+	if node.Status.Allocatable != nil {
+		if storage, ok := node.Status.Allocatable[v1.ResourceStorage]; ok {
+			response.Status.Allocatable.Storage = storage.String()
+		}
+		if ephemeralStorage, ok := node.Status.Allocatable[v1.ResourceEphemeralStorage]; ok {
+			response.Status.Allocatable.EphemeralStorage = ephemeralStorage.String()
+		}
+	}
 
 	return response
 }
@@ -361,14 +472,40 @@ func (h *NodesHandler) GetNode(c *gin.Context) {
 	h.tracingHelper.RecordSuccess(k8sSpan, "Successfully retrieved node")
 	h.tracingHelper.AddResourceAttributes(k8sSpan, name, "node", 1)
 
-	// Check if this is an SSE request (EventSource expects SSE format)
-	acceptHeader := c.GetHeader("Accept")
-	if acceptHeader == "text/event-stream" {
-		h.sseHandler.SendSSEResponse(c, node)
+	// Transform the node to include our custom fields
+	transformedResponse := h.transformNodeToResponse(node)
+
+	// Create an enhanced node response that includes both the original K8s data
+	// and our computed fields
+	enhancedNode := make(map[string]interface{})
+
+	// Marshal and unmarshal to convert v1.Node to map[string]interface{}
+	nodeBytes, err := json.Marshal(node)
+	if err != nil {
+		h.logger.WithError(err).WithField("node", name).Error("Failed to marshal node")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process node data"})
 		return
 	}
 
-	c.JSON(http.StatusOK, node)
+	if err := json.Unmarshal(nodeBytes, &enhancedNode); err != nil {
+		h.logger.WithError(err).WithField("node", name).Error("Failed to unmarshal node")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process node data"})
+		return
+	}
+
+	// Add our custom computed fields to the status
+	if status, ok := enhancedNode["status"].(map[string]interface{}); ok {
+		status["issues"] = transformedResponse.Status.Issues
+	}
+
+	// Check if this is an SSE request (EventSource expects SSE format)
+	acceptHeader := c.GetHeader("Accept")
+	if acceptHeader == "text/event-stream" {
+		h.sseHandler.SendSSEResponse(c, enhancedNode)
+		return
+	}
+
+	c.JSON(http.StatusOK, enhancedNode)
 }
 
 // GetNodeYAML returns the YAML representation of a specific node

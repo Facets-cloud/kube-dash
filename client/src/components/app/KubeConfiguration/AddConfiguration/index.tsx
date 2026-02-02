@@ -136,14 +136,9 @@ const AddConfig = () => {
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(false);
-    
-    const files = Array.from(e.dataTransfer.files).filter(file => 
-      file.name.endsWith('.yaml') || 
-      file.name.endsWith('.yml') || 
-      file.name.endsWith('.kubeconfig') ||
-      file.name.endsWith('-kubeconfig')
-    );
-    
+
+    const files = Array.from(e.dataTransfer.files);
+
     if (files.length > 0) {
       setSelectedFiles(files);
       
@@ -716,7 +711,7 @@ const AddConfig = () => {
                               id="kubeconfigFile"
                               type='file'
                               multiple
-                              accept=".yaml,.yml,.kubeconfig,-kubeconfig"
+                              accept="*"
                               className='shadow-none flex-1'
                               onChange={handleFileChange}
                             />

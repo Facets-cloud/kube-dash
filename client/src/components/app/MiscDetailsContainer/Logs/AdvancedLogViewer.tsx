@@ -60,6 +60,54 @@ export const AdvancedLogViewer: React.FC<AdvancedLogViewerProps> = ({
     info: 0,
     debug: 0
   });
+  const [isDarkMode, setIsDarkMode] = useState(() =>
+    document.documentElement.classList.contains('dark')
+  );
+
+  // Theme configurations - memoized to avoid recreating on every render
+  const lightTheme = React.useMemo(() => ({
+    background: '#ffffff',
+    foreground: '#1a1a1a',
+    cursor: '#1a1a1a',
+    black: '#1a1a1a',
+    red: '#c00000',
+    green: '#008000',
+    yellow: '#b8860b',
+    blue: '#0066cc',
+    magenta: '#8b008b',
+    cyan: '#008b8b',
+    white: '#1a1a1a',
+    brightBlack: '#4a4a4a',
+    brightRed: '#ff0000',
+    brightGreen: '#00aa00',
+    brightYellow: '#ffaa00',
+    brightBlue: '#0088ff',
+    brightMagenta: '#cc00cc',
+    brightCyan: '#00cccc',
+    brightWhite: '#333333',
+  }), []);
+
+  const darkTheme = React.useMemo(() => ({
+    background: '#1e1e1e',
+    foreground: '#d4d4d4',
+    cursor: '#ffffff',
+    black: '#000000',
+    red: '#cd3131',
+    green: '#0dbc79',
+    yellow: '#e5e510',
+    blue: '#2472c8',
+    magenta: '#bc3fbc',
+    cyan: '#11a8cd',
+    white: '#e5e5e5',
+    brightBlack: '#666666',
+    brightRed: '#f14c4c',
+    brightGreen: '#23d18b',
+    brightYellow: '#f5f543',
+    brightBlue: '#3b8eea',
+    brightMagenta: '#d670d6',
+    brightCyan: '#29b8db',
+    brightWhite: '#ffffff',
+  }), []);
 
   // Initialize terminal
   useEffect(() => {
@@ -69,27 +117,7 @@ export const AdvancedLogViewer: React.FC<AdvancedLogViewerProps> = ({
     terminal.current = new Terminal({
       fontSize: 12,
       fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
-      theme: {
-        background: '#1e1e1e',
-        foreground: '#d4d4d4',
-        cursor: '#ffffff',
-        black: '#000000',
-        red: '#cd3131',
-        green: '#0dbc79',
-        yellow: '#e5e510',
-        blue: '#2472c8',
-        magenta: '#bc3fbc',
-        cyan: '#11a8cd',
-        white: '#e5e5e5',
-        brightBlack: '#666666',
-        brightRed: '#f14c4c',
-        brightGreen: '#23d18b',
-        brightYellow: '#f5f543',
-        brightBlue: '#3b8eea',
-        brightMagenta: '#d670d6',
-        brightCyan: '#29b8db',
-        brightWhite: '#ffffff',
-      },
+      theme: isDarkMode ? darkTheme : lightTheme,
       scrollback: 10000,
       rows: 30,
       cols: 120,
@@ -116,13 +144,39 @@ export const AdvancedLogViewer: React.FC<AdvancedLogViewerProps> = ({
 
     window.addEventListener('resize', handleResize);
 
+    // Observe theme changes
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.attributeName === 'class') {
+          const isDark = document.documentElement.classList.contains('dark');
+          setIsDarkMode(isDark);
+        }
+      });
+    });
+
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class'],
+    });
+
     return () => {
       window.removeEventListener('resize', handleResize);
+      observer.disconnect();
       if (terminal.current) {
         terminal.current.dispose();
       }
     };
   }, []);
+
+  // Update terminal theme when dark mode changes
+  useEffect(() => {
+    if (terminal.current) {
+      const newTheme = isDarkMode ? darkTheme : lightTheme;
+      terminal.current.options.theme = newTheme;
+      // Force a refresh to apply the new theme
+      terminal.current.refresh(0, terminal.current.rows - 1);
+    }
+  }, [isDarkMode, darkTheme, lightTheme]);
 
   // Calculate log statistics
   const calculateLogStats = useCallback((logArray: PodSocketResponse[]) => {

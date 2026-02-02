@@ -232,6 +232,9 @@ export const TerminalLogViewer: React.FC<TerminalLogViewerProps> = ({
   const [logMode, setLogMode] = useState<'all' | 'tail'>('tail');
   const [maxLines, setMaxLines] = useState(100);
   const logBufferRef = useRef<string>('');
+  const [isDarkMode, setIsDarkMode] = useState(() =>
+    document.documentElement.classList.contains('dark')
+  );
 
   const allPodContainers = React.useMemo(() => {
     if (!podDetails?.spec) return [];
@@ -248,6 +251,51 @@ export const TerminalLogViewer: React.FC<TerminalLogViewerProps> = ({
     return containers;
   }, [podDetails]);
 
+  // Theme configurations - memoized to avoid recreating on every render
+  const lightTheme = React.useMemo(() => ({
+    background: '#ffffff',
+    foreground: '#1a1a1a',
+    cursor: '#1a1a1a',
+    black: '#1a1a1a',
+    red: '#c00000',
+    green: '#008000',
+    yellow: '#b8860b',
+    blue: '#0066cc',
+    magenta: '#8b008b',
+    cyan: '#008b8b',
+    white: '#1a1a1a',
+    brightBlack: '#4a4a4a',
+    brightRed: '#ff0000',
+    brightGreen: '#00aa00',
+    brightYellow: '#ffaa00',
+    brightBlue: '#0088ff',
+    brightMagenta: '#cc00cc',
+    brightCyan: '#00cccc',
+    brightWhite: '#333333',
+  }), []);
+
+  const darkTheme = React.useMemo(() => ({
+    background: '#1a1a1a',
+    foreground: '#e0e0e0',
+    cursor: '#e0e0e0',
+    black: '#000000',
+    red: '#cd3131',
+    green: '#0dbc79',
+    yellow: '#e5e510',
+    blue: '#2472c8',
+    magenta: '#bc3fbc',
+    cyan: '#11a8cd',
+    white: '#e5e5e5',
+    brightBlack: '#666666',
+    brightRed: '#f14c4c',
+    brightGreen: '#23d18b',
+    brightYellow: '#f5f543',
+    brightBlue: '#3b8eea',
+    brightMagenta: '#d670d6',
+    brightCyan: '#29b8db',
+    brightWhite: '#ffffff',
+  }), []);
+
   // Initialize xterm
   useEffect(() => {
     if (!terminalRef.current) return;
@@ -258,27 +306,7 @@ export const TerminalLogViewer: React.FC<TerminalLogViewerProps> = ({
       disableStdin: true,
       fontSize: 13,
       fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace',
-      theme: {
-        background: '#1a1a1a',
-        foreground: '#e0e0e0',
-        cursor: '#e0e0e0',
-        black: '#000000',
-        red: '#cd3131',
-        green: '#0dbc79',
-        yellow: '#e5e510',
-        blue: '#2472c8',
-        magenta: '#bc3fbc',
-        cyan: '#11a8cd',
-        white: '#e5e5e5',
-        brightBlack: '#666666',
-        brightRed: '#f14c4c',
-        brightGreen: '#23d18b',
-        brightYellow: '#f5f543',
-        brightBlue: '#3b8eea',
-        brightMagenta: '#d670d6',
-        brightCyan: '#29b8db',
-        brightWhite: '#ffffff',
-      },
+      theme: isDarkMode ? darkTheme : lightTheme,
       scrollback: 10000,
     });
 
@@ -307,11 +335,37 @@ export const TerminalLogViewer: React.FC<TerminalLogViewerProps> = ({
 
     window.addEventListener('resize', handleResize);
 
+    // Observe theme changes
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.attributeName === 'class') {
+          const isDark = document.documentElement.classList.contains('dark');
+          setIsDarkMode(isDark);
+        }
+      });
+    });
+
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class'],
+    });
+
     return () => {
       window.removeEventListener('resize', handleResize);
+      observer.disconnect();
       term.dispose();
     };
   }, []);
+
+  // Update xterm theme when dark mode changes
+  useEffect(() => {
+    if (xtermRef.current) {
+      const newTheme = isDarkMode ? darkTheme : lightTheme;
+      xtermRef.current.options.theme = newTheme;
+      // Force a refresh to apply the new theme
+      xtermRef.current.refresh(0, xtermRef.current.rows - 1);
+    }
+  }, [isDarkMode, darkTheme, lightTheme]);
 
   // Refit terminal when fullscreen mode changes
   useEffect(() => {

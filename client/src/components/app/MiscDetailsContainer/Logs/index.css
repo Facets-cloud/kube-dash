@@ -21,3 +21,57 @@
   height: 100% !important;
   width: 100% !important;
 }
+
+/* Light mode ANSI color overrides for better contrast */
+/* Default text color for logs in light mode */
+:not(.dark) .log-line-light span {
+  color: #1a1a1a !important;
+}
+
+/* Preserve specific color meanings in light mode with darker shades */
+:not(.dark) .log-line-light span[style*="color: rgb(0, 0, 0)"],
+:not(.dark) .log-line-light span[style*="color: #000000"],
+:not(.dark) .log-line-light span[style*="color: black"] {
+  color: #1a1a1a !important;
+}
+
+:not(.dark) .log-line-light span[style*="color: rgb(205, 49, 49)"],
+:not(.dark) .log-line-light span[style*="color: #cd3131"] {
+  color: #c00000 !important; /* Darker red for errors */
+}
+
+:not(.dark) .log-line-light span[style*="color: rgb(13, 188, 121)"],
+:not(.dark) .log-line-light span[style*="color: #0dbc79"] {
+  color: #008000 !important; /* Darker green */
+}
+
+:not(.dark) .log-line-light span[style*="color: rgb(229, 229, 16)"],
+:not(.dark) .log-line-light span[style*="color: #e5e510"] {
+  color: #b8860b !important; /* Darker yellow */
+}
+
+:not(.dark) .log-line-light span[style*="color: rgb(36, 114, 200)"],
+:not(.dark) .log-line-light span[style*="color: #2472c8"] {
+  color: #0066cc !important; /* Darker blue */
+}
+
+:not(.dark) .log-line-light span[style*="color: rgb(188, 63, 188)"],
+:not(.dark) .log-line-light span[style*="color: #bc3fbc"] {
+  color: #8b008b !important; /* Darker magenta */
+}
+
+:not(.dark) .log-line-light span[style*="color: rgb(17, 168, 205)"],
+:not(.dark) .log-line-light span[style*="color: #11a8cd"] {
+  color: #008b8b !important; /* Darker cyan */
+}
+
+/* Gray colors in light mode */
+:not(.dark) .log-line-light span[style*="color: rgb(102, 102, 102)"],
+:not(.dark) .log-line-light span[style*="color: #666666"] {
+  color: #4a4a4a !important; /* Darker gray */
+}
+
+:not(.dark) .log-line-light span[style*="color: rgb(229, 229, 229)"],
+:not(.dark) .log-line-light span[style*="color: #e5e5e5"] {
+  color: #333333 !important; /* Much darker for light backgrounds */
+}

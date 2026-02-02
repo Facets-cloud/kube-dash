@@ -132,15 +132,67 @@ const TableCells = <T extends ClusterDetails>({
       defaultQueryParams.cluster = clusterName;
       link = `${configName}/details?${toQueryParams(defaultQueryParams)}&${queryParams}`;
     }
+
+    // Add status badges for nodes
+    let badges;
+    if (instanceType === NODES_ENDPOINT) {
+      const original: any = row.original as any;
+      const isUnschedulable = original?.unschedulable === true;
+      const hasIssues = original?.hasIssues === true;
+      const issueTypes = original?.issueTypes || [];
+
+      badges = [];
+
+      // Add schedulable/cordoned badge
+      badges.push({
+        label: isUnschedulable ? 'Cordoned' : 'Schedulable',
+        variant: isUnschedulable ? 'cordoned' : 'schedulable'
+      } as const);
+
+      // Add issue badge if node has issues
+      if (hasIssues) {
+        const hasCritical = issueTypes.some((type: string) =>
+          ['NodeNotReady', 'MemoryPressure', 'NetworkUnavailable'].includes(type)
+        );
+        badges.push({
+          label: hasCritical ? 'Critical Issues' : 'Warnings',
+          variant: hasCritical ? 'critical' : 'warning'
+        } as const);
+      }
+    }
+
     return <NameCell
       cellValue={value}
       link={link}
+      badges={badges}
     />;
   }
   if (instanceType === 'events' || instanceType === HPA_ENDPOINT) {
     const eventsValue = value ?? '—';
     return <DefaultCell cellValue={eventsValue} truncate={false} />;
   }
+
+  // Node status badges (cordoned/schedulable)
+  if (instanceType === NODES_ENDPOINT && type === 'Status') {
+    const isUnschedulable = value === 'true';
+    if (isUnschedulable) {
+      return (
+        <div className="flex items-center gap-1">
+          <span className="inline-flex items-center rounded-md bg-orange-50 dark:bg-orange-950/30 px-2 py-1 text-xs font-medium text-orange-700 dark:text-orange-400 ring-1 ring-inset ring-orange-600/20 dark:ring-orange-400/30">
+            Cordoned
+          </span>
+        </div>
+      );
+    }
+    return (
+      <div className="flex items-center gap-1">
+        <span className="inline-flex items-center rounded-md bg-green-50 dark:bg-green-950/30 px-2 py-1 text-xs font-medium text-green-700 dark:text-green-400 ring-1 ring-inset ring-green-600/20 dark:ring-green-400/30">
+          Schedulable
+        </span>
+      </div>
+    );
+  }
+
   if (
     value !== '' &&
     (type === 'Rules' || type === 'Ports' || type === 'Bindings' || type === 'Roles' || type === 'Keys' || type === 'External IP') &&

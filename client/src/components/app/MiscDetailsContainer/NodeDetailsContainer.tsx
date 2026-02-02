@@ -1,9 +1,13 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import { AlertCircle, AlertTriangle } from "lucide-react";
 import { DataTable } from "@/components/app/Table";
 import { HeaderList, Pods } from "@/types";
 import { createEventStreamQueryObject, defaultSkeletonRow, getEventStreamUrl } from "@/utils";
 import { useAppDispatch, useAppSelector } from "@/redux/hooks";
+import { formatBytes, parseKubernetesQuantity } from "@/utils/Clusters/NodeUtils";
 
 import { CopyToClipboard } from "@/components/app/Common/CopyToClipboard";
 import { defaultOrValue } from "@/utils";
@@ -27,7 +31,10 @@ const NodeDetailsContainer = memo(function () {
     nodeDetails: {
       status: {
         conditions,
-        images
+        images,
+        issues,
+        capacity,
+        allocatable
       }
     }
   } = useAppSelector((state) => state.nodeDetails);
@@ -70,6 +77,208 @@ const NodeDetailsContainer = memo(function () {
 
   return (
     <div className="mt-2">
+      {issues && issues.length > 0 && (
+        <Alert
+          variant={issues.some(i => i.severity === 'critical') ? 'destructive' : 'default'}
+          className="mb-4"
+        >
+          {issues.some(i => i.severity === 'critical') ? (
+            <AlertCircle className="h-4 w-4" />
+          ) : (
+            <AlertTriangle className="h-4 w-4" />
+          )}
+          <AlertTitle className="font-semibold">
+            Node Issues Detected
+          </AlertTitle>
+          <AlertDescription>
+            <div className="mt-2 space-y-2">
+              {issues.map((issue, index) => (
+                <div key={index} className="flex items-start gap-2">
+                  <Badge
+                    variant={issue.severity === 'critical' ? 'destructive' : 'outline'}
+                    className="mt-0.5"
+                  >
+                    {issue.severity}
+                  </Badge>
+                  <div className="flex-1">
+                    <div className="font-medium text-sm">{issue.type}</div>
+                    <div className="text-sm text-muted-foreground mt-1">
+                      {issue.message}
+                    </div>
+                    {issue.reason && (
+                      <div className="text-xs text-muted-foreground mt-1">
+                        Reason: {issue.reason}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
+      {(capacity || allocatable) && (
+        <Card className="shadow-none rounded-lg mb-4">
+          <CardHeader className="p-4">
+            <CardTitle className="text-sm font-medium">Storage Information</CardTitle>
+          </CardHeader>
+          <CardContent className="px-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              {/* Ephemeral Storage Card */}
+              {((capacity && capacity["ephemeral-storage"]) || (allocatable && allocatable["ephemeral-storage"])) && (
+                <Card className="shadow-none rounded-lg border-dashed">
+                  <CardHeader className="p-4">
+                    <CardTitle className="text-sm font-normal">Ephemeral Storage</CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    {/* Total Capacity Row */}
+                    <div className="py-1.5 border-t border-b border-dashed flex flex-row">
+                      <div className="pl-4 text-sm font-medium text-muted-foreground basis-1/3">
+                        Total
+                      </div>
+                      <div className="flex flex-row text-sm font-normal basis-2/3 group/item">
+                        <div className="break-all basis-[97%]">
+                          {(capacity && capacity["ephemeral-storage"])
+                            ? formatBytes(parseKubernetesQuantity(String(capacity["ephemeral-storage"])))
+                            : '—'}
+                        </div>
+                        <div className="basis-[3%] group/edit invisible group-hover/item:visible flex items-center">
+                          <CopyToClipboard val={String(capacity?.["ephemeral-storage"] || '')} />
+                        </div>
+                      </div>
+                    </div>
+                    {/* Used Row */}
+                    {(capacity && capacity["ephemeral-storage"] && allocatable && allocatable["ephemeral-storage"]) && (
+                      <div className="py-1.5 border-b border-dashed flex flex-row">
+                        <div className="pl-4 text-sm font-medium text-muted-foreground basis-1/3">
+                          Used
+                        </div>
+                        <div className="flex flex-row text-sm font-normal basis-2/3 group/item">
+                          <div className="break-all basis-[97%]">
+                            {formatBytes(
+                              parseKubernetesQuantity(String(capacity["ephemeral-storage"])) -
+                              parseKubernetesQuantity(String(allocatable["ephemeral-storage"]))
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {/* Available Row */}
+                    <div className="py-1.5 border-b border-dashed flex flex-row">
+                      <div className="pl-4 text-sm font-medium text-muted-foreground basis-1/3">
+                        Available
+                      </div>
+                      <div className="flex flex-row text-sm font-normal basis-2/3 group/item">
+                        <div className="break-all basis-[97%]">
+                          {(allocatable && allocatable["ephemeral-storage"])
+                            ? formatBytes(parseKubernetesQuantity(String(allocatable["ephemeral-storage"])))
+                            : '—'}
+                        </div>
+                        <div className="basis-[3%] group/edit invisible group-hover/item:visible flex items-center">
+                          <CopyToClipboard val={String(allocatable?.["ephemeral-storage"] || '')} />
+                        </div>
+                      </div>
+                    </div>
+                    {/* Usage Percentage Row */}
+                    {(capacity && capacity["ephemeral-storage"] && allocatable && allocatable["ephemeral-storage"]) && (
+                      <div className="py-1.5 border-b border-dashed flex flex-row">
+                        <div className="pl-4 text-sm font-medium text-muted-foreground basis-1/3">
+                          Usage
+                        </div>
+                        <div className="flex flex-row text-sm font-normal basis-2/3">
+                          <div className="break-all">
+                            {Math.round(
+                              ((parseKubernetesQuantity(String(capacity["ephemeral-storage"])) -
+                                parseKubernetesQuantity(String(allocatable["ephemeral-storage"]))) /
+                               parseKubernetesQuantity(String(capacity["ephemeral-storage"]))) * 100
+                            )}%
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Regular Storage Card */}
+              {((capacity && capacity.storage) || (allocatable && allocatable.storage)) && (
+                <Card className="shadow-none rounded-lg border-dashed">
+                  <CardHeader className="p-4">
+                    <CardTitle className="text-sm font-normal">Storage</CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    {/* Total Capacity Row */}
+                    <div className="py-1.5 border-t border-b border-dashed flex flex-row">
+                      <div className="pl-4 text-sm font-medium text-muted-foreground basis-1/3">
+                        Total
+                      </div>
+                      <div className="flex flex-row text-sm font-normal basis-2/3 group/item">
+                        <div className="break-all basis-[97%]">
+                          {(capacity && capacity.storage)
+                            ? formatBytes(parseKubernetesQuantity(String(capacity.storage)))
+                            : '—'}
+                        </div>
+                        <div className="basis-[3%] group/edit invisible group-hover/item:visible flex items-center">
+                          <CopyToClipboard val={String(capacity?.storage || '')} />
+                        </div>
+                      </div>
+                    </div>
+                    {/* Used Row */}
+                    {(capacity && capacity.storage && allocatable && allocatable.storage) && (
+                      <div className="py-1.5 border-b border-dashed flex flex-row">
+                        <div className="pl-4 text-sm font-medium text-muted-foreground basis-1/3">
+                          Used
+                        </div>
+                        <div className="flex flex-row text-sm font-normal basis-2/3 group/item">
+                          <div className="break-all basis-[97%]">
+                            {formatBytes(
+                              parseKubernetesQuantity(String(capacity.storage)) -
+                              parseKubernetesQuantity(String(allocatable.storage))
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {/* Available Row */}
+                    <div className="py-1.5 border-b border-dashed flex flex-row">
+                      <div className="pl-4 text-sm font-medium text-muted-foreground basis-1/3">
+                        Available
+                      </div>
+                      <div className="flex flex-row text-sm font-normal basis-2/3 group/item">
+                        <div className="break-all basis-[97%]">
+                          {(allocatable && allocatable.storage)
+                            ? formatBytes(parseKubernetesQuantity(String(allocatable.storage)))
+                            : '—'}
+                        </div>
+                        <div className="basis-[3%] group/edit invisible group-hover/item:visible flex items-center">
+                          <CopyToClipboard val={String(allocatable?.storage || '')} />
+                        </div>
+                      </div>
+                    </div>
+                    {/* Usage Percentage Row */}
+                    {(capacity && capacity.storage && allocatable && allocatable.storage) && (
+                      <div className="py-1.5 border-b border-dashed flex flex-row">
+                        <div className="pl-4 text-sm font-medium text-muted-foreground basis-1/3">
+                          Usage
+                        </div>
+                        <div className="flex flex-row text-sm font-normal basis-2/3">
+                          <div className="break-all">
+                            {Math.round(
+                              ((parseKubernetesQuantity(String(capacity.storage)) -
+                                parseKubernetesQuantity(String(allocatable.storage))) /
+                               parseKubernetesQuantity(String(capacity.storage))) * 100
+                            )}%
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
       {
         images && <Card className="shadow-none rounded-lg">
           <CardHeader className="p-4 ">
