@@ -756,103 +756,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/v1/cloudshell/ws": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    },
-                    {
-                        "KubeConfig": []
-                    }
-                ],
-                "description": "Connect to an interactive cloud shell terminal via WebSocket",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "WebSocket"
-                ],
-                "summary": "Connect to Cloud Shell via WebSocket",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Cloud shell pod name",
-                        "name": "pod",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Namespace name",
-                        "name": "namespace",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Kubernetes configuration ID",
-                        "name": "config",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Cluster name",
-                        "name": "cluster",
-                        "in": "query",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "101": {
-                        "description": "WebSocket connection established",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden - insufficient permissions",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "404": {
-                        "description": "Pod not found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
         "/api/v1/cloudshell/{name}": {
             "delete": {
                 "security": [
@@ -9181,105 +9084,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/v1/pod/{name}/exec/ws": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    },
-                    {
-                        "KubeConfig": []
-                    }
-                ],
-                "description": "Execute interactive commands in a pod container by name via WebSocket connection",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "WebSocket"
-                ],
-                "summary": "Execute Commands in Pod by Name via WebSocket",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Pod name",
-                        "name": "name",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Namespace name",
-                        "name": "namespace",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Kubernetes configuration ID",
-                        "name": "config",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Cluster name",
-                        "name": "cluster",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Container name (defaults to first container)",
-                        "name": "container",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Command to execute (default: /bin/sh)",
-                        "name": "command",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "101": {
-                        "description": "WebSocket connection established",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "404": {
-                        "description": "Pod not found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
         "/api/v1/pod/{name}/logs/ws": {
             "get": {
                 "security": [
@@ -9701,105 +9505,6 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/pods/{namespace}/{name}/exec/ws": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    },
-                    {
-                        "KubeConfig": []
-                    }
-                ],
-                "description": "Execute interactive commands in a pod container via WebSocket connection",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "WebSocket"
-                ],
-                "summary": "Execute Commands in Pod via WebSocket",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Namespace name",
-                        "name": "namespace",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Pod name",
-                        "name": "name",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Kubernetes configuration ID",
-                        "name": "config",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Cluster name",
-                        "name": "cluster",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Container name (defaults to first container)",
-                        "name": "container",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Command to execute (default: /bin/sh)",
-                        "name": "command",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "101": {
-                        "description": "WebSocket connection established",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "404": {
-                        "description": "Pod not found",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -12937,6 +12642,192 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/terminal/cloudshell/{namespace}/{name}/ws": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "KubeConfig": []
+                    }
+                ],
+                "description": "Execute interactive commands in a cloudshell pod via WebSocket using K8s v5.channel.k8s.io protocol",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Terminal"
+                ],
+                "summary": "Execute Commands in CloudShell Pod via WebSocket (v5 Protocol)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Namespace name",
+                        "name": "namespace",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "CloudShell pod name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Kubernetes configuration ID",
+                        "name": "config",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster name",
+                        "name": "cluster",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "101": {
+                        "description": "WebSocket connection established",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "CloudShell pod not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/terminal/exec/{namespace}/{name}/ws": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "KubeConfig": []
+                    }
+                ],
+                "description": "Execute interactive commands in a pod container via WebSocket using K8s v5.channel.k8s.io protocol",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Terminal"
+                ],
+                "summary": "Execute Commands in Pod via WebSocket (v5 Protocol)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Namespace name",
+                        "name": "namespace",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Pod name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Kubernetes configuration ID",
+                        "name": "config",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster name",
+                        "name": "cluster",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Container name (defaults to first container)",
+                        "name": "container",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Command to execute (default: /bin/sh)",
+                        "name": "command",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "101": {
+                        "description": "WebSocket connection established",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Pod not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/traces": {
             "get": {
                 "security": [
@@ -14116,6 +14007,44 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_api_handlers_cluster.NodeConditionInfo": {
+            "type": "object",
+            "properties": {
+                "lastTransitionTime": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_api_handlers_cluster.NodeIssue": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "severity": {
+                    "description": "\"critical\" or \"warning\"",
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
         "internal_api_handlers_cluster.NodeListResponse": {
             "type": "object",
             "properties": {
@@ -14151,6 +14080,9 @@ const docTemplate = `{
                         },
                         "providerID": {
                             "type": "string"
+                        },
+                        "unschedulable": {
+                            "type": "boolean"
                         }
                     }
                 },
@@ -14165,8 +14097,42 @@ const docTemplate = `{
                                 }
                             }
                         },
+                        "allocatable": {
+                            "type": "object",
+                            "properties": {
+                                "ephemeralStorage": {
+                                    "type": "string"
+                                },
+                                "storage": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "capacity": {
+                            "type": "object",
+                            "properties": {
+                                "ephemeralStorage": {
+                                    "type": "string"
+                                },
+                                "storage": {
+                                    "type": "string"
+                                }
+                            }
+                        },
                         "conditionStatus": {
                             "type": "string"
+                        },
+                        "conditions": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/internal_api_handlers_cluster.NodeConditionInfo"
+                            }
+                        },
+                        "issues": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/internal_api_handlers_cluster.NodeIssue"
+                            }
                         },
                         "nodeInfo": {
                             "type": "object",

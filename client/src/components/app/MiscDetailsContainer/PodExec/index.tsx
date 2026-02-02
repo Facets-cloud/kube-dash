@@ -1,13 +1,18 @@
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, useCallback, useMemo } from "react";
 import { PodDetailsSpec } from "@/types";
 
-import { SearchAddon } from "@xterm/addon-search";
-import { Terminal } from "@xterm/xterm";
-import EnhancedTerminal from "../Terminal/EnhancedTerminal";
+import { Terminal, TerminalRef } from "@/components/terminal";
+import { useTerminalWebSocket } from "@/hooks/terminal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  ServerMessage,
+  buildExecWebSocketUrl,
+  ConnectionStatus,
+  ResizeDimensions,
+} from "@/types/terminal";
 
 type PodExecProps = {
   pod: string;
@@ -18,191 +23,166 @@ type PodExecProps = {
 }
 
 export function PodExec({ pod, namespace, configName, clusterName, podDetailsSpec }: PodExecProps) {
-  const execContainerRef = useRef<HTMLDivElement>(null);
-  const xterm = useRef<Terminal | null>(null);
-  const searchAddonRef = useRef<SearchAddon | null>(null);
+  const terminalRef = useRef<TerminalRef>(null);
   const [selectedContainer, setSelectedContainer] = useState('');
   const [command, setCommand] = useState('/bin/sh');
-  const [isConnected, setIsConnected] = useState(false);
-  const wsRef = useRef<WebSocket | null>(null);
+  const [wsUrl, setWsUrl] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string | undefined>();
 
-  const containerNames = podDetailsSpec.containers?.map(container => container.name) || [];
+  const containerNames = useMemo(() =>
+    podDetailsSpec.containers?.map(container => container.name) || [],
+    [podDetailsSpec.containers]
+  );
 
-  // Set default container to the first one (0th container)
+  // Set default container to the first one
   useEffect(() => {
     if (containerNames.length > 0 && !selectedContainer) {
       setSelectedContainer(containerNames[0]);
     }
   }, [containerNames, selectedContainer]);
 
-  // Cleanup WebSocket on unmount
-  useEffect(() => {
-    return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
-        setIsConnected(false);
-      }
-    };
+  // Handle messages from the terminal WebSocket
+  const handleMessage = useCallback((message: ServerMessage) => {
+    if (!terminalRef.current) return;
+
+    switch (message.type) {
+      case 'stdout':
+        if (message.data) {
+          terminalRef.current.write(message.data);
+        }
+        break;
+      case 'stderr':
+        if (message.data) {
+          // Write stderr in red
+          terminalRef.current.write(`\x1b[31m${message.data}\x1b[0m`);
+        }
+        break;
+      case 'error':
+        if (message.error) {
+          terminalRef.current.writeln(`\r\n\x1b[31mError: ${message.error}\x1b[0m`);
+        }
+        break;
+      case 'status':
+        if (message.status) {
+          setStatusMessage(message.status.message);
+        }
+        break;
+    }
   }, []);
 
-  const connectToPod = () => {
+  // Handle connection status changes
+  const handleStatusChange = useCallback((newStatus: ConnectionStatus) => {
+    if (!terminalRef.current) return;
+
+    switch (newStatus) {
+      case 'connected':
+        // Clear terminal for a fresh start
+        terminalRef.current.clear();
+        terminalRef.current.writeln(`\x1b[32mConnected to pod ${pod} in container ${selectedContainer}\x1b[0m`);
+        terminalRef.current.writeln(`\x1b[36mCommand: ${command}\x1b[0m`);
+        terminalRef.current.writeln(`\x1b[37mType 'exit' to disconnect\x1b[0m\r\n`);
+        // Fit terminal to container and focus to enable keyboard input
+        terminalRef.current.fit();
+        terminalRef.current.focus();
+        break;
+      case 'disconnected':
+        terminalRef.current.writeln(`\r\n\x1b[31mDisconnected from pod ${pod}\x1b[0m`);
+        break;
+      case 'error':
+        terminalRef.current.writeln(`\r\n\x1b[31mConnection error occurred\x1b[0m`);
+        break;
+    }
+  }, [pod, selectedContainer, command]);
+
+  // Handle WebSocket errors
+  const handleError = useCallback((error: string) => {
+    if (terminalRef.current) {
+      terminalRef.current.writeln(`\r\n\x1b[31mError: ${error}\x1b[0m`);
+    }
+  }, []);
+
+  // WebSocket connection hook
+  const { status, isConnected, sendInput, sendResize, disconnect } = useTerminalWebSocket({
+    url: wsUrl,
+    reconnect: true,
+    maxReconnectAttempts: 3,
+    reconnectInterval: 1000,
+    onMessage: handleMessage,
+    onStatusChange: handleStatusChange,
+    onError: handleError,
+  });
+
+  // Handle terminal input
+  const handleTerminalInput = useCallback((data: string) => {
+    if (!isConnected) return;
+
+    // Handle special terminal control sequences locally
+    if (data.length === 1) {
+      const charCode = data.charCodeAt(0);
+
+      // Ctrl+L (form feed) - clear screen locally
+      if (charCode === 12 && terminalRef.current) {
+        terminalRef.current.clear();
+      }
+    }
+
+    // Send input to WebSocket
+    sendInput(data);
+  }, [isConnected, sendInput]);
+
+  // Handle terminal resize
+  const handleTerminalResize = useCallback((dimensions: ResizeDimensions) => {
+    if (isConnected) {
+      sendResize(dimensions.cols, dimensions.rows);
+    }
+  }, [isConnected, sendResize]);
+
+  // Connect to pod
+  const connectToPod = useCallback(() => {
     if (!selectedContainer) {
       alert('Please select a container');
       return;
     }
 
-    // Disconnect any existing connection first
-    if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
-      setIsConnected(false);
-    }
-
-    // Create WebSocket URL - handle both HTTP and HTTPS
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/api/v1/pods/${namespace}/${pod}/exec/ws?container=${selectedContainer}&command=${command}&config=${configName}&cluster=${clusterName}`;
-    
-    // console.log('Connecting to WebSocket:', wsUrl);
-    
-    const websocket = new WebSocket(wsUrl);
-    
-    // Set WebSocket reference immediately to avoid race conditions
-    wsRef.current = websocket;
-    
-    websocket.onopen = () => {
-      // console.log('WebSocket connected successfully');
-      setIsConnected(true);
-      if (xterm.current) {
-        xterm.current.writeln(`\r\n\x1b[32mConnected to pod ${pod} in container ${selectedContainer}\x1b[0m`);
-        xterm.current.writeln(`\r\n\x1b[36mCommand: ${command}\x1b[0m`);
-        xterm.current.writeln(`\r\n\x1b[37mType 'exit' to disconnect\x1b[0m\r\n`);
-      }
-    };
-
-    websocket.onmessage = (event) => {
-      // console.log('WebSocket message received:', event.data);
-      try {
-        const data = JSON.parse(event.data);
-        if (xterm.current) {
-          if (data.type === 'stdout') {
-            xterm.current.write(data.data);
-          } else if (data.type === 'stderr') {
-            xterm.current.write(`\x1b[31m${data.data}\x1b[0m`);
-          } else if (data.error) {
-            xterm.current.writeln(`\r\n\x1b[31mError: ${data.error}\x1b[0m`);
-          }
-        }
-      } catch (error) {
-        // If not JSON, treat as raw output
-        if (xterm.current) {
-          xterm.current.write(event.data);
-        }
-      }
-    };
-
-    websocket.onerror = (error) => {
-      console.error('WebSocket error:', error);
-      setIsConnected(false);
-      wsRef.current = null;
-      if (xterm.current) {
-        xterm.current.writeln(`\r\n\x1b[31mWebSocket error occurred\x1b[0m`);
-      }
-    };
-
-    websocket.onclose = () => {
-      // console.log('WebSocket closed');
-      setIsConnected(false);
-      wsRef.current = null;
-      if (xterm.current) {
-        xterm.current.writeln(`\r\n\x1b[31mDisconnected from pod ${pod}\x1b[0m`);
-      }
-    };
-  };
-
-  const disconnectFromPod = () => {
-    if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
-    }
-    setIsConnected(false);
-  };
-
-  const handleTerminalInput = (data: string) => {
-    
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-      // console.log('Cannot send input - WebSocket not connected or not open');
-      return;
-    }
-
-    // Handle special terminal control sequences
-    // This includes Ctrl+L (clear screen), Ctrl+C (interrupt), etc.
-    if (data.length === 1) {
-      const charCode = data.charCodeAt(0);
-      
-      // Ctrl+L (form feed) - clear screen
-      if (charCode === 12) {
-        // Clear the terminal screen locally
-        if (xterm.current) {
-          xterm.current.clear();
-        }
-        // Still send to backend for proper terminal behavior
-      }
-      // Ctrl+C (ETX) - interrupt
-      else if (charCode === 3) {
-        // Let the backend handle the interrupt
-        // console.log('Ctrl+C detected - sending interrupt signal');
-      }
-      // Ctrl+D (EOT) - end of transmission
-      else if (charCode === 4) {
-        // Let the backend handle the EOF
-        // console.log('Ctrl+D detected - sending EOF signal');
-      }
-      // Ctrl+Z (SUB) - suspend
-      else if (charCode === 26) {
-        // Let the backend handle the suspend
-        // console.log('Ctrl+Z detected - sending suspend signal');
-      }
-    }
-    // Handle ANSI escape sequences for clear screen
-    else if (data === '\x1b[2J' || data === '\x1b[H\x1b[2J') {
-      // ANSI clear screen sequence
-      if (xterm.current) {
-        xterm.current.clear();
-      }
-      // Still send to backend for proper terminal behavior
-    }
-
-    // Send input to WebSocket
-    const message = JSON.stringify({
-      input: data
+    // Build WebSocket URL using the new terminal endpoint
+    const url = buildExecWebSocketUrl({
+      namespace,
+      podName: pod,
+      container: selectedContainer,
+      command,
+      configId: configName,
+      cluster: clusterName,
     });
-    
-    try {
-      wsRef.current.send(message);
-    } catch (error) {
-      console.error('Error sending WebSocket message:', error);
-      // Update connection state if send fails
-      setIsConnected(false);
-      wsRef.current = null;
+
+    // Clear terminal before connecting
+    if (terminalRef.current) {
+      terminalRef.current.clear();
     }
-  };
+
+    setWsUrl(url);
+  }, [namespace, pod, selectedContainer, command, configName, clusterName]);
+
+  // Disconnect from pod
+  const disconnectFromPod = useCallback(() => {
+    disconnect();
+    setWsUrl(null);
+  }, [disconnect]);
 
   // Handle container change
-  const handleContainerChange = (newContainer: string) => {
+  const handleContainerChange = useCallback((newContainer: string) => {
     if (isConnected) {
-      // Disconnect first if connected
       disconnectFromPod();
     }
     setSelectedContainer(newContainer);
-  };
+  }, [isConnected, disconnectFromPod]);
 
   return (
-    <div className="pod-exec flex-col md:flex border rounded-lg">
-      <div className="flex items-start justify-between py-4 flex-row items-center h-10 border-b bg-muted/50">
-        <div className="mx-2 flex basis-9/12 space-x-2">
+    <div className="pod-exec flex flex-col border rounded-lg">
+      {/* Connection Controls */}
+      <div className="flex items-center justify-between py-2 px-3 border-b bg-muted/50">
+        <div className="flex items-center space-x-3">
           <div className="flex items-center space-x-2">
-            <Label htmlFor="container" className="text-xs">Container:</Label>
+            <Label htmlFor="container" className="text-xs whitespace-nowrap">Container:</Label>
             <Select value={selectedContainer} onValueChange={handleContainerChange}>
               <SelectTrigger className="w-48 h-8">
                 <SelectValue placeholder="Select container" />
@@ -216,9 +196,9 @@ export function PodExec({ pod, namespace, configName, clusterName, podDetailsSpe
               </SelectContent>
             </Select>
           </div>
-          
+
           <div className="flex items-center space-x-2">
-            <Label htmlFor="command" className="text-xs">Command:</Label>
+            <Label htmlFor="command" className="text-xs whitespace-nowrap">Command:</Label>
             <Input
               id="command"
               value={command}
@@ -248,16 +228,22 @@ export function PodExec({ pod, namespace, configName, clusterName, podDetailsSpe
           )}
         </div>
       </div>
-      
-      <div ref={execContainerRef} className="w-full h-full border rounded-lg overflow-hidden bg-background">
-        <EnhancedTerminal
-          xterm={xterm}
-          searchAddonRef={searchAddonRef}
-          onInput={handleTerminalInput}
+
+      {/* Terminal */}
+      <div className="flex-1">
+        <Terminal
+          ref={terminalRef}
+          status={status}
+          statusMessage={statusMessage}
+          onData={handleTerminalInput}
+          onResize={handleTerminalResize}
           allowFullscreen={true}
+          allowSearch={true}
+          showToolbar={true}
+          showStatusBar={true}
+          enableWebGL={true}
           initialRows={30}
           initialCols={120}
-          enableWebGL={true}
         />
       </div>
     </div>

@@ -2,12 +2,10 @@ package cloudshell
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
 
-	"github.com/Facets-cloud/kube-dash/internal/api/handlers/shared"
 	"github.com/Facets-cloud/kube-dash/internal/api/utils"
 	"github.com/Facets-cloud/kube-dash/internal/k8s"
 	"github.com/Facets-cloud/kube-dash/internal/storage"
@@ -15,17 +13,14 @@ import (
 	"github.com/Facets-cloud/kube-dash/pkg/logger"
 
 	"github.com/gin-gonic/gin"
-	"github.com/gorilla/websocket"
 	"go.opentelemetry.io/otel/attribute"
 	authorizationv1 "k8s.io/api/authorization/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/client-go/tools/remotecommand"
 )
 
 const (
@@ -42,7 +37,6 @@ type CloudShellHandler struct {
 	clientFactory *k8s.ClientFactory
 	helmFactory   *k8s.HelmClientFactory
 	logger        *logger.Logger
-	upgrader      websocket.Upgrader
 	tracingHelper *tracing.TracingHelper
 }
 
@@ -65,11 +59,6 @@ func NewCloudShellHandler(store *storage.KubeConfigStore, clientFactory *k8s.Cli
 		clientFactory: clientFactory,
 		helmFactory:   helmFactory,
 		logger:        log,
-		upgrader: websocket.Upgrader{
-			CheckOrigin: func(r *http.Request) bool {
-				return true // Allow all origins for now
-			},
-		},
 		tracingHelper: tracing.GetTracingHelper(),
 	}
 }
@@ -565,197 +554,6 @@ func (h *CloudShellHandler) CreateCloudShell(c *gin.Context) {
 	h.tracingHelper.RecordSuccess(span, "Cloud shell creation operation completed")
 }
 
-// HandleCloudShellWebSocket handles WebSocket-based cloud shell terminal
-// This function checks if the user has permissions to connect to the specific cloud shell pod
-// before allowing the WebSocket connection. Users must have:
-// 1. Permission to get the specific pod
-// 2. Permission to exec into the pod
-// @Summary Connect to Cloud Shell via WebSocket
-// @Description Connect to an interactive cloud shell terminal via WebSocket
-// @Tags WebSocket
-// @Accept json
-// @Produce json
-// @Param pod query string true "Cloud shell pod name"
-// @Param namespace query string true "Namespace name"
-// @Param config query string true "Kubernetes configuration ID"
-// @Param cluster query string true "Cluster name"
-// @Success 101 {string} string "WebSocket connection established"
-// @Failure 400 {object} map[string]string "Bad request"
-// @Failure 403 {object} map[string]string "Forbidden - insufficient permissions"
-// @Failure 404 {object} map[string]string "Pod not found"
-// @Failure 500 {object} map[string]string "Internal server error"
-// @Router /api/v1/cloudshell/ws [get]
-// @Security BearerAuth
-// @Security KubeConfig
-func (h *CloudShellHandler) HandleCloudShellWebSocket(c *gin.Context) {
-	// Start main span for cloud shell WebSocket operation
-	ctx, span := h.tracingHelper.StartAuthSpan(c.Request.Context(), "websocket_connection")
-	defer span.End()
-
-	// Child span for WebSocket connection setup
-	connCtx, connSpan := h.tracingHelper.StartKubernetesAPISpan(ctx, "connection_setup", "websocket", "")
-	// Upgrade HTTP connection to WebSocket
-	conn, err := h.upgrader.Upgrade(c.Writer, c.Request, nil)
-	if err != nil {
-		h.logger.WithError(err).Error("Failed to upgrade connection to WebSocket")
-		h.tracingHelper.RecordError(connSpan, err, "Failed to upgrade to WebSocket")
-		connSpan.End()
-		h.tracingHelper.RecordError(span, err, "CloudShell WebSocket connection failed")
-		return
-	}
-	defer conn.Close()
-	h.tracingHelper.RecordSuccess(connSpan, "WebSocket connection established")
-	connSpan.End()
-
-	// Get parameters
-	podName := c.Query("pod")
-	namespace := c.Query("namespace")
-	configID := c.Query("config")
-	cluster := c.Query("cluster")
-
-	// Add resource attributes
-	span.SetAttributes(
-		attribute.String("cloudshell.pod", podName),
-		attribute.String("cloudshell.namespace", namespace),
-	)
-
-	if podName == "" || namespace == "" || configID == "" || cluster == "" {
-		err := fmt.Errorf("pod, namespace, config, and cluster parameters are required")
-		h.sendWebSocketError(conn, err.Error())
-		h.tracingHelper.RecordError(span, err, "Missing required parameters")
-		return
-	}
-
-	// Child span for client acquisition
-	clientCtx, clientSpan := h.tracingHelper.StartAuthSpan(connCtx, "client_acquisition")
-	// Get Kubernetes client and config
-	client, restConfig, err := h.getClientAndConfig(c)
-	if err != nil {
-		h.logger.WithError(err).Error("Failed to get Kubernetes client for cloud shell")
-		h.sendWebSocketError(conn, err.Error())
-		h.tracingHelper.RecordError(clientSpan, err, "Failed to get Kubernetes client")
-		clientSpan.End()
-		h.tracingHelper.RecordError(span, err, "Client acquisition failed")
-		return
-	}
-	h.tracingHelper.RecordSuccess(clientSpan, "Kubernetes client acquired")
-	clientSpan.End()
-
-	// Child span for permission checks
-	permissionCtx, permissionSpan := h.tracingHelper.StartKubernetesAPISpan(clientCtx, "permission_check", "pods", namespace)
-	// Check permissions to connect to this specific cloud shell pod
-	if err := h.checkCloudShellConnectionPermissions(client, podName, namespace); err != nil {
-		h.logger.WithError(err).WithFields(map[string]interface{}{
-			"pod":       podName,
-			"namespace": namespace,
-			"config_id": configID,
-			"cluster":   cluster,
-		}).Error("Permission check failed for cloud shell connection")
-
-		// Check if this is a permission error and return appropriate response
-		if utils.IsPermissionError(err) {
-			h.sendWebSocketError(conn, fmt.Sprintf("Permission denied: %v", err))
-		} else {
-			h.sendWebSocketError(conn, fmt.Sprintf("Failed to check permissions: %v", err))
-		}
-		h.tracingHelper.RecordError(permissionSpan, err, "Permission check failed")
-		permissionSpan.End()
-		h.tracingHelper.RecordError(span, err, "Permission denied")
-		return
-	}
-	h.tracingHelper.RecordSuccess(permissionSpan, "Permission check completed")
-	permissionSpan.End()
-
-	// Child span for pod validation
-	validationCtx, validationSpan := h.tracingHelper.StartKubernetesAPISpan(permissionCtx, "pod_validation", "pods", namespace)
-	// Verify pod exists and is running
-	pod, err := client.CoreV1().Pods(namespace).Get(c.Request.Context(), podName, metav1.GetOptions{})
-	if err != nil {
-		h.logger.WithError(err).WithField("pod", podName).WithField("namespace", namespace).Error("Failed to get cloud shell pod")
-		h.sendWebSocketError(conn, fmt.Sprintf("Pod not found: %v", err))
-		h.tracingHelper.RecordError(validationSpan, err, "Failed to get pod")
-		validationSpan.End()
-		h.tracingHelper.RecordError(span, err, "Pod validation failed")
-		return
-	}
-
-	// Check if pod is being terminated
-	if pod.DeletionTimestamp != nil {
-		err := fmt.Errorf("pod is being terminated and cannot accept new connections")
-		h.sendWebSocketError(conn, err.Error())
-		h.tracingHelper.RecordError(validationSpan, err, "Pod being terminated")
-		validationSpan.End()
-		h.tracingHelper.RecordError(span, err, "Pod not available")
-		return
-	}
-
-	// Check if pod is running
-	if pod.Status.Phase != v1.PodRunning {
-		err := fmt.Errorf("pod is not running, current phase: %s", pod.Status.Phase)
-		h.sendWebSocketError(conn, err.Error())
-		h.tracingHelper.RecordError(validationSpan, err, "Pod not running")
-		validationSpan.End()
-		h.tracingHelper.RecordError(span, err, "Pod not ready")
-		return
-	}
-	h.tracingHelper.RecordSuccess(validationSpan, "Pod validation completed")
-	validationSpan.End()
-
-	// Child span for interactive session management
-	_, sessionSpan := h.tracingHelper.StartKubernetesAPISpan(validationCtx, "session_management", "pods/exec", namespace)
-	defer func() {
-		h.tracingHelper.RecordSuccess(sessionSpan, "Interactive session completed")
-		sessionSpan.End()
-		h.tracingHelper.RecordSuccess(span, "Cloud shell WebSocket operation completed")
-	}()
-
-	// Create exec request
-	req := client.CoreV1().RESTClient().Post().
-		Resource("pods").
-		Name(podName).
-		Namespace(namespace).
-		SubResource("exec").
-		VersionedParams(&v1.PodExecOptions{
-			Container: "shell",
-			Command:   []string{"/bin/bash"},
-			Stdin:     true,
-			Stdout:    true,
-			Stderr:    true,
-			TTY:       true,
-		}, scheme.ParameterCodec)
-
-	// Create SPDY executor
-	exec, err := remotecommand.NewSPDYExecutor(restConfig, "POST", req.URL())
-	if err != nil {
-		h.logger.WithError(err).Error("Failed to create SPDY executor")
-		h.sendWebSocketError(conn, fmt.Sprintf("Failed to create executor: %v", err))
-		h.tracingHelper.RecordError(sessionSpan, err, "Failed to create SPDY executor")
-		sessionSpan.End()
-		h.tracingHelper.RecordError(span, err, "Executor creation failed")
-		return
-	}
-
-	// Create enhanced terminal session for better performance
-	session := shared.NewEnhancedTerminalSession(conn, h.logger)
-
-	// Start the exec session
-	err = exec.Stream(remotecommand.StreamOptions{
-		Stdin:  session,
-		Stdout: session,
-		Stderr: session,
-		Tty:    true,
-	})
-
-	if err != nil {
-		h.logger.WithError(err).Error("Failed to start cloud shell exec stream")
-		h.sendWebSocketError(conn, fmt.Sprintf("Failed to start exec: %v", err))
-		h.tracingHelper.RecordError(sessionSpan, err, "Failed to start exec stream")
-		sessionSpan.End()
-		h.tracingHelper.RecordError(span, err, "Exec stream failed")
-		return
-	}
-}
-
 // ListCloudShellSessions lists all cloud shell sessions
 // This function checks if the user has permissions to list pods in the namespace
 // before returning the session list. Users must have permission to list pods.
@@ -1075,15 +873,6 @@ func (h *CloudShellHandler) DeleteCloudShell(c *gin.Context) {
 		"message": "Cloud shell deleted successfully",
 	})
 	h.tracingHelper.RecordSuccess(span, "Delete cloud shell operation completed")
-}
-
-// sendWebSocketError sends an error message through the WebSocket
-func (h *CloudShellHandler) sendWebSocketError(conn *websocket.Conn, message string) {
-	errorMsg := map[string]interface{}{
-		"error": message,
-	}
-	jsonData, _ := json.Marshal(errorMsg)
-	conn.WriteMessage(websocket.TextMessage, jsonData)
 }
 
 // CleanupOldSessions cleans up cloud shell sessions that are older than the maximum age

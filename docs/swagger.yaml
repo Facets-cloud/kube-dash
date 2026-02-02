@@ -524,6 +524,31 @@ definitions:
       ignoreDaemonSets:
         type: boolean
     type: object
+  internal_api_handlers_cluster.NodeConditionInfo:
+    properties:
+      lastTransitionTime:
+        type: string
+      message:
+        type: string
+      reason:
+        type: string
+      status:
+        type: string
+      type:
+        type: string
+    type: object
+  internal_api_handlers_cluster.NodeIssue:
+    properties:
+      message:
+        type: string
+      reason:
+        type: string
+      severity:
+        description: '"critical" or "warning"'
+        type: string
+      type:
+        type: string
+    type: object
   internal_api_handlers_cluster.NodeListResponse:
     properties:
       age:
@@ -548,6 +573,8 @@ definitions:
             type: array
           providerID:
             type: string
+          unschedulable:
+            type: boolean
         type: object
       status:
         properties:
@@ -556,8 +583,30 @@ definitions:
               internalIP:
                 type: string
             type: object
+          allocatable:
+            properties:
+              ephemeralStorage:
+                type: string
+              storage:
+                type: string
+            type: object
+          capacity:
+            properties:
+              ephemeralStorage:
+                type: string
+              storage:
+                type: string
+            type: object
           conditionStatus:
             type: string
+          conditions:
+            items:
+              $ref: '#/definitions/internal_api_handlers_cluster.NodeConditionInfo'
+            type: array
+          issues:
+            items:
+              $ref: '#/definitions/internal_api_handlers_cluster.NodeIssue'
+            type: array
           nodeInfo:
             properties:
               architecture:
@@ -1181,69 +1230,6 @@ paths:
       summary: Manual Cloud Shell Cleanup
       tags:
       - Cloud Shell
-  /api/v1/cloudshell/ws:
-    get:
-      consumes:
-      - application/json
-      description: Connect to an interactive cloud shell terminal via WebSocket
-      parameters:
-      - description: Cloud shell pod name
-        in: query
-        name: pod
-        required: true
-        type: string
-      - description: Namespace name
-        in: query
-        name: namespace
-        required: true
-        type: string
-      - description: Kubernetes configuration ID
-        in: query
-        name: config
-        required: true
-        type: string
-      - description: Cluster name
-        in: query
-        name: cluster
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "101":
-          description: WebSocket connection established
-          schema:
-            type: string
-        "400":
-          description: Bad request
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "403":
-          description: Forbidden - insufficient permissions
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "404":
-          description: Pod not found
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "500":
-          description: Internal server error
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      security:
-      - BearerAuth: []
-      - KubeConfig: []
-      summary: Connect to Cloud Shell via WebSocket
-      tags:
-      - WebSocket
   /api/v1/configmaps:
     get:
       consumes:
@@ -6586,71 +6572,6 @@ paths:
       summary: Get Persistent Volumes (SSE)
       tags:
       - Storage
-  /api/v1/pod/{name}/exec/ws:
-    get:
-      consumes:
-      - application/json
-      description: Execute interactive commands in a pod container by name via WebSocket
-        connection
-      parameters:
-      - description: Pod name
-        in: path
-        name: name
-        required: true
-        type: string
-      - description: Namespace name
-        in: query
-        name: namespace
-        required: true
-        type: string
-      - description: Kubernetes configuration ID
-        in: query
-        name: config
-        required: true
-        type: string
-      - description: Cluster name
-        in: query
-        name: cluster
-        type: string
-      - description: Container name (defaults to first container)
-        in: query
-        name: container
-        type: string
-      - description: 'Command to execute (default: /bin/sh)'
-        in: query
-        name: command
-        type: string
-      produces:
-      - application/json
-      responses:
-        "101":
-          description: WebSocket connection established
-          schema:
-            type: string
-        "400":
-          description: Bad request
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "404":
-          description: Pod not found
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "500":
-          description: Internal server error
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      security:
-      - BearerAuth: []
-      - KubeConfig: []
-      summary: Execute Commands in Pod by Name via WebSocket
-      tags:
-      - WebSocket
   /api/v1/pod/{name}/logs/ws:
     get:
       consumes:
@@ -6938,70 +6859,6 @@ paths:
       summary: Get Pods (SSE)
       tags:
       - Workloads
-  /api/v1/pods/{namespace}/{name}/exec/ws:
-    get:
-      consumes:
-      - application/json
-      description: Execute interactive commands in a pod container via WebSocket connection
-      parameters:
-      - description: Namespace name
-        in: path
-        name: namespace
-        required: true
-        type: string
-      - description: Pod name
-        in: path
-        name: name
-        required: true
-        type: string
-      - description: Kubernetes configuration ID
-        in: query
-        name: config
-        required: true
-        type: string
-      - description: Cluster name
-        in: query
-        name: cluster
-        type: string
-      - description: Container name (defaults to first container)
-        in: query
-        name: container
-        type: string
-      - description: 'Command to execute (default: /bin/sh)'
-        in: query
-        name: command
-        type: string
-      produces:
-      - application/json
-      responses:
-        "101":
-          description: WebSocket connection established
-          schema:
-            type: string
-        "400":
-          description: Bad request
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "404":
-          description: Pod not found
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "500":
-          description: Internal server error
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      security:
-      - BearerAuth: []
-      - KubeConfig: []
-      summary: Execute Commands in Pod via WebSocket
-      tags:
-      - WebSocket
   /api/v1/pods/{namespace}/{name}/restarts:
     get:
       consumes:
@@ -9027,6 +8884,128 @@ paths:
       summary: Get StatefulSet YAML by Namespace and Name
       tags:
       - Workloads
+  /api/v1/terminal/cloudshell/{namespace}/{name}/ws:
+    get:
+      consumes:
+      - application/json
+      description: Execute interactive commands in a cloudshell pod via WebSocket
+        using K8s v5.channel.k8s.io protocol
+      parameters:
+      - description: Namespace name
+        in: path
+        name: namespace
+        required: true
+        type: string
+      - description: CloudShell pod name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: Kubernetes configuration ID
+        in: query
+        name: config
+        required: true
+        type: string
+      - description: Cluster name
+        in: query
+        name: cluster
+        type: string
+      produces:
+      - application/json
+      responses:
+        "101":
+          description: WebSocket connection established
+          schema:
+            type: string
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: CloudShell pod not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      - KubeConfig: []
+      summary: Execute Commands in CloudShell Pod via WebSocket (v5 Protocol)
+      tags:
+      - Terminal
+  /api/v1/terminal/exec/{namespace}/{name}/ws:
+    get:
+      consumes:
+      - application/json
+      description: Execute interactive commands in a pod container via WebSocket using
+        K8s v5.channel.k8s.io protocol
+      parameters:
+      - description: Namespace name
+        in: path
+        name: namespace
+        required: true
+        type: string
+      - description: Pod name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: Kubernetes configuration ID
+        in: query
+        name: config
+        required: true
+        type: string
+      - description: Cluster name
+        in: query
+        name: cluster
+        type: string
+      - description: Container name (defaults to first container)
+        in: query
+        name: container
+        type: string
+      - description: 'Command to execute (default: /bin/sh)'
+        in: query
+        name: command
+        type: string
+      produces:
+      - application/json
+      responses:
+        "101":
+          description: WebSocket connection established
+          schema:
+            type: string
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Pod not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      - KubeConfig: []
+      summary: Execute Commands in Pod via WebSocket (v5 Protocol)
+      tags:
+      - Terminal
   /api/v1/traces:
     get:
       consumes:

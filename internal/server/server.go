@@ -19,7 +19,7 @@ import (
 	"github.com/Facets-cloud/kube-dash/internal/api/handlers/portforward"
 	storage_handlers "github.com/Facets-cloud/kube-dash/internal/api/handlers/storage"
 	tracing_handlers "github.com/Facets-cloud/kube-dash/internal/api/handlers/tracing"
-	"github.com/Facets-cloud/kube-dash/internal/api/handlers/websocket"
+	"github.com/Facets-cloud/kube-dash/internal/api/handlers/terminal"
 	"github.com/Facets-cloud/kube-dash/internal/api/handlers/websockets"
 	"github.com/Facets-cloud/kube-dash/internal/api/handlers/workloads"
 	"github.com/Facets-cloud/kube-dash/internal/config"
@@ -98,9 +98,9 @@ type Server struct {
 	storageClassesHandler         *storage_handlers.StorageClassesHandler
 
 	// WebSocket handlers
-	podExecHandler     *websocket.PodExecHandler
 	podLogsHandler     *websockets.PodLogsHandler
 	portForwardHandler *portforward.PortForwardHandler
+	terminalHandler    *terminal.Handler
 
 	// Helm handlers
 	helmHandler *helm.HelmHandler
@@ -195,9 +195,9 @@ func New(cfg *config.Config) *Server {
 	storageClassesHandler := storage_handlers.NewStorageClassesHandler(store, clientFactory, log)
 
 	// Create WebSocket handlers
-	podExecHandler := websocket.NewPodExecHandler(store, clientFactory, log)
 	podLogsHandler := websockets.NewPodLogsHandler(store, clientFactory, log)
 	portForwardHandler := portforward.NewPortForwardHandler(store, clientFactory, log)
+	terminalHandler := terminal.NewHandler(store, clientFactory, log)
 
 	// Create Helm handlers
 	helmFactory := k8s.NewHelmClientFactory()
@@ -297,9 +297,9 @@ func New(cfg *config.Config) *Server {
 		storageClassesHandler:         storageClassesHandler,
 
 		// WebSocket handlers
-		podExecHandler:     podExecHandler,
 		podLogsHandler:     podLogsHandler,
 		portForwardHandler: portForwardHandler,
+		terminalHandler:    terminalHandler,
 
 		// Helm handlers
 		helmHandler: helmHandler,
@@ -534,9 +534,10 @@ func (s *Server) setupRoutes() {
 
 		api.GET("/pod/:name/logs/ws", s.podLogsHandler.HandlePodLogs)
 
-		// WebSocket routes for pod exec
-		api.GET("/pods/:namespace/:name/exec/ws", s.podExecHandler.HandlePodExec)
-		api.GET("/pod/:name/exec/ws", s.podExecHandler.HandlePodExecByName)
+		// Terminal routes (WebSocket-based, K8s v5.channel.k8s.io protocol)
+		api.GET("/pods/:namespace/:name/exec/ws", s.terminalHandler.HandleExec)
+		api.GET("/terminal/exec/:namespace/:name/ws", s.terminalHandler.HandleExec)
+		api.GET("/terminal/cloudshell/:namespace/:name/ws", s.terminalHandler.HandleCloudShellExec)
 
 		// Port Forward routes
 		api.GET("/portforward/ws", s.portForwardHandler.HandlePortForward)
@@ -717,7 +718,6 @@ func (s *Server) setupRoutes() {
 		// Cloud Shell endpoints
 		api.POST("/cloudshell", s.cloudShellHandler.CreateCloudShell)
 		api.GET("/cloudshell", s.cloudShellHandler.ListCloudShellSessions)
-		api.GET("/cloudshell/ws", s.cloudShellHandler.HandleCloudShellWebSocket)
 		api.DELETE("/cloudshell/:name", s.cloudShellHandler.DeleteCloudShell)
 		api.POST("/cloudshell/cleanup", s.cloudShellHandler.ManualCleanup)
 
