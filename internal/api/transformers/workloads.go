@@ -11,6 +11,24 @@ import (
 	v1 "k8s.io/api/core/v1"
 )
 
+// containerErrorReasons are container states that indicate an error condition
+var containerErrorReasons = map[string]bool{
+	"CrashLoopBackOff":           true,
+	"ImagePullBackOff":           true,
+	"ErrImagePull":               true,
+	"CreateContainerConfigError": true,
+	"CreateContainerError":       true,
+	"OOMKilled":                  true,
+	"Error":                      true,
+	"Unknown":                    true,
+}
+
+// containerWaitingReasons are container states that indicate a waiting/pending condition
+var containerWaitingReasons = map[string]bool{
+	"ContainerCreating": true,
+	"PodInitializing":   true,
+}
+
 // Helper functions to safely handle nil pointers
 func getInt32Value(ptr *int32, defaultValue int32) int32 {
 	if ptr == nil {
@@ -33,6 +51,57 @@ func getCompletionMode(ptr *batchV1.CompletionMode) string {
 	return string(*ptr)
 }
 
+// getContainerStatusReason extracts the most relevant status reason from container statuses.
+// It checks init containers first (they take precedence), then regular containers.
+// Returns the first error reason found, or the first waiting reason if no errors.
+func getContainerStatusReason(pod *v1.Pod) string {
+	var firstWaitingReason string
+
+	// Check init containers first - they must complete before regular containers start
+	for _, cs := range pod.Status.InitContainerStatuses {
+		reason := extractContainerReason(cs)
+		if reason != "" {
+			if containerErrorReasons[reason] {
+				return reason
+			}
+			if containerWaitingReasons[reason] && firstWaitingReason == "" {
+				firstWaitingReason = reason
+			}
+		}
+	}
+
+	// Check regular containers (skip ephemeral containers as they're for debugging)
+	for _, cs := range pod.Status.ContainerStatuses {
+		reason := extractContainerReason(cs)
+		if reason != "" {
+			if containerErrorReasons[reason] {
+				return reason
+			}
+			if containerWaitingReasons[reason] && firstWaitingReason == "" {
+				firstWaitingReason = reason
+			}
+		}
+	}
+
+	return firstWaitingReason
+}
+
+// extractContainerReason extracts the status reason from a container status.
+// It checks Waiting state first (most common for errors), then Terminated state.
+func extractContainerReason(cs v1.ContainerStatus) string {
+	// Check waiting state first - this is where CrashLoopBackOff, ImagePullBackOff, etc. appear
+	if cs.State.Waiting != nil && cs.State.Waiting.Reason != "" {
+		return cs.State.Waiting.Reason
+	}
+
+	// Check terminated state - this is where OOMKilled, Error, etc. appear
+	if cs.State.Terminated != nil && cs.State.Terminated.Reason != "" {
+		return cs.State.Terminated.Reason
+	}
+
+	return ""
+}
+
 // TransformPodToResponse transforms a Kubernetes pod to the frontend-expected format
 func TransformPodToResponse(pod *v1.Pod, configName, clusterName string) types.PodListResponse {
 	age := types.TimeFormat(pod.CreationTimestamp.Time)
@@ -47,13 +116,25 @@ func TransformPodToResponse(pod *v1.Pod, configName, clusterName string) types.P
 	}
 	ready := strconv.Itoa(readyContainers) + "/" + strconv.Itoa(totalContainers)
 
-	// Get pod status
+	// Get pod status with priority order:
+	// 1. DeletionTimestamp → "Terminating"
+	// 2. Container error states → e.g., "CrashLoopBackOff"
+	// 3. Container waiting states → e.g., "ContainerCreating"
+	// 4. pod.Status.Reason → if set (e.g., "Evicted", "NodeLost")
+	// 5. pod.Status.Phase → default (Pending, Running, Succeeded, Failed)
 	status := string(pod.Status.Phase)
+
+	// Check container-level statuses for more specific reasons
+	if containerReason := getContainerStatusReason(pod); containerReason != "" {
+		status = containerReason
+	}
+
+	// Override with pod-level reason if set (e.g., Evicted, NodeLost)
 	if pod.Status.Reason != "" {
 		status = pod.Status.Reason
 	}
-	
-	// Check if pod is terminating (has DeletionTimestamp set)
+
+	// Check if pod is terminating (has DeletionTimestamp set) - highest priority
 	if pod.DeletionTimestamp != nil {
 		status = "Terminating"
 	}
