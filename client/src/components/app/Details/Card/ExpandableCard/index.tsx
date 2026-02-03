@@ -64,10 +64,10 @@ function CardContentDetails({ fieldLabel, data, defaultLabelCount }: CardItems) 
               Object.keys(data).map((key, index) => {
                 return (
                   (index < defaultLabelCount || showCompleteLabel) && <span key={index}>
-                    <Badge className="m-1" variant="secondary">
+                    <Badge className="m-1 text-black dark:text-black" variant="secondary">
                       <p className={checkForTagLength() && !showCompleteLabel ? "line-clamp-1 break-all" : "break-all"}>
-                        <span className="text-sm font-medium text-muted-foreground">{key}: </span>
-                        <span className="text-sm font-normal ">{data[key]}</span>
+                        <span className="text-sm font-medium opacity-70">{key}: </span>
+                        <span className="text-sm font-normal">{data[key]}</span>
                       </p>
                     </Badge>
                   </span>

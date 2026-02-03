@@ -572,16 +572,17 @@ export const PodLogsViewer: React.FC<PodLogsViewerProps> = ({
     try {
       switch (searchMode) {
         case 'regex':
-          searchRegex = new RegExp(term, caseSensitive ? 'g' : 'gi');
+          // Don't use 'g' flag with test() - it causes stateful behavior
+          searchRegex = new RegExp(term, caseSensitive ? '' : 'i');
           break;
         default: // simple
           const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          searchRegex = new RegExp(escapedTerm, caseSensitive ? 'g' : 'gi');
+          searchRegex = new RegExp(escapedTerm, caseSensitive ? '' : 'i');
       }
     } catch (error) {
       // Invalid regex, fall back to simple search
       const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      searchRegex = new RegExp(escapedTerm, caseSensitive ? 'g' : 'gi');
+      searchRegex = new RegExp(escapedTerm, caseSensitive ? '' : 'i');
     }
 
     const updatedLogs = logs.map((log, index) => {
@@ -598,10 +599,13 @@ export const PodLogsViewer: React.FC<PodLogsViewerProps> = ({
     return { results, updatedLogs };
    }, [searchMode, caseSensitive]);
 
+  // Track previous search term to know when to reset index
+  const prevSearchTermRef = useRef(searchTerm);
+
   // Search functionality
   useEffect(() => {
     const { results, updatedLogs } = performSearch(filteredLogs, searchTerm);
-    
+
     setLogs(prevLogs => {
        // Update search matches for all logs
        return prevLogs.map(log => {
@@ -609,9 +613,14 @@ export const PodLogsViewer: React.FC<PodLogsViewerProps> = ({
          return matchingLog ? { ...log, searchMatch: matchingLog.searchMatch } : { ...log, searchMatch: false };
        });
      });
-     
+
      setSearchResults(results);
-      setCurrentSearchIndex(results.length > 0 ? 0 : -1);
+
+     // Only reset currentSearchIndex when search term changes, not on every filteredLogs update
+     if (prevSearchTermRef.current !== searchTerm) {
+       setCurrentSearchIndex(results.length > 0 ? 0 : -1);
+       prevSearchTermRef.current = searchTerm;
+     }
     }, [searchTerm, filteredLogs, performSearch]);
 
   // Auto-scroll to bottom when new logs arrive

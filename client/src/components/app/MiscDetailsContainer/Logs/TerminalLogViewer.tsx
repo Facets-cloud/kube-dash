@@ -232,9 +232,22 @@ export const TerminalLogViewer: React.FC<TerminalLogViewerProps> = ({
   const [logMode, setLogMode] = useState<'all' | 'tail'>('tail');
   const [maxLines, setMaxLines] = useState(100);
   const logBufferRef = useRef<string>('');
+  // Store raw log entries for grep filtering
+  const rawLogsRef = useRef<Array<{ container?: string; message: string }>>([]);
+  // Refs for search state to avoid callback dependency issues
+  const searchModeRef = useRef(searchMode);
+  const searchTermRef = useRef(searchTerm);
+  const caseSensitiveRef = useRef(caseSensitive);
   const [isDarkMode, setIsDarkMode] = useState(() =>
     document.documentElement.classList.contains('dark')
   );
+
+  // Keep refs in sync with state
+  useEffect(() => {
+    searchModeRef.current = searchMode;
+    searchTermRef.current = searchTerm;
+    caseSensitiveRef.current = caseSensitive;
+  }, [searchMode, searchTerm, caseSensitive]);
 
   const allPodContainers = React.useMemo(() => {
     if (!podDetails?.spec) return [];
@@ -308,6 +321,7 @@ export const TerminalLogViewer: React.FC<TerminalLogViewerProps> = ({
       fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace',
       theme: isDarkMode ? darkTheme : lightTheme,
       scrollback: 10000,
+      allowProposedApi: true, // Required for search decorations
     });
 
     const fitAddon = new FitAddon();
@@ -383,6 +397,7 @@ export const TerminalLogViewer: React.FC<TerminalLogViewerProps> = ({
     if (xtermRef.current) {
       xtermRef.current.clear();
       logBufferRef.current = '';
+      rawLogsRef.current = [];
     }
   }, []);
 
@@ -391,6 +406,7 @@ export const TerminalLogViewer: React.FC<TerminalLogViewerProps> = ({
     if (xtermRef.current) {
       xtermRef.current.clear();
       logBufferRef.current = '';
+      rawLogsRef.current = [];
     }
   }, []);
 
@@ -400,6 +416,73 @@ export const TerminalLogViewer: React.FC<TerminalLogViewerProps> = ({
 
   const effectiveContainer = selectedContainer && selectedContainer !== 'all' ? selectedContainer : container;
   const effectiveAllContainers = selectedContainer === 'all' || (!selectedContainer && allContainers);
+
+  // Helper function to check if a log message matches the grep pattern
+  const matchesGrepPattern = useCallback((message: string, pattern: string, isCaseSensitive: boolean): boolean => {
+    if (!pattern) return true;
+    try {
+      // Strip ANSI codes before matching
+      const cleanMessage = message.replace(/\x1b\[[0-9;]*m/g, '');
+      const grepPattern = pattern
+        .replace(/\*/g, '.*')  // * becomes .*
+        .replace(/\?/g, '.');  // ? becomes .
+      const searchRegex = new RegExp(grepPattern, isCaseSensitive ? 'g' : 'gi');
+      return searchRegex.test(cleanMessage);
+    } catch {
+      // Invalid regex, fall back to simple contains check
+      const cleanMessage = message.replace(/\x1b\[[0-9;]*m/g, '');
+      return isCaseSensitive
+        ? cleanMessage.includes(pattern)
+        : cleanMessage.toLowerCase().includes(pattern.toLowerCase());
+    }
+  }, []);
+
+  // Re-render filtered logs when grep term changes
+  const applyGrepFilter = useCallback(() => {
+    if (!xtermRef.current) return;
+
+    xtermRef.current.clear();
+    logBufferRef.current = '';
+
+    if (searchMode !== 'grep' || !searchTerm) {
+      // Show all logs
+      rawLogsRef.current.forEach(log => {
+        const containerPrefix = log.container ? `\x1b[36m[${log.container}]\x1b[0m ` : '';
+        const logLine = `${containerPrefix}${log.message}\r\n`;
+        xtermRef.current!.write(logLine);
+        logBufferRef.current += logLine;
+      });
+    } else {
+      // Show only matching logs
+      rawLogsRef.current.forEach(log => {
+        if (matchesGrepPattern(log.message, searchTerm, caseSensitive)) {
+          const containerPrefix = log.container ? `\x1b[36m[${log.container}]\x1b[0m ` : '';
+          const logLine = `${containerPrefix}${log.message}\r\n`;
+          xtermRef.current!.write(logLine);
+          logBufferRef.current += logLine;
+        }
+      });
+    }
+  }, [searchMode, searchTerm, caseSensitive, matchesGrepPattern]);
+
+  // Track previous search mode to detect mode changes
+  const prevSearchModeRef = useRef(searchMode);
+
+  // Apply grep filter when in grep mode, or restore all logs when switching away from grep
+  useEffect(() => {
+    const wasGrep = prevSearchModeRef.current === 'grep';
+    const isGrep = searchMode === 'grep';
+    prevSearchModeRef.current = searchMode;
+
+    if (isGrep) {
+      // In grep mode - apply filtering
+      applyGrepFilter();
+    } else if (wasGrep && !isGrep) {
+      // Switched from grep to simple/regex - restore all logs
+      applyGrepFilter(); // This will show all logs since searchMode !== 'grep'
+    }
+    // For simple/regex modes, the SearchAddon handles highlighting via handleSearch
+  }, [searchTerm, searchMode, caseSensitive, applyGrepFilter]);
 
   const { isConnected, isConnecting } = usePodLogsWebSocket({
     podName,
@@ -415,11 +498,31 @@ export const TerminalLogViewer: React.FC<TerminalLogViewerProps> = ({
     onLog: useCallback((logMessage: LogMessage) => {
       if (!xtermRef.current) return;
 
-      const containerPrefix = logMessage.container ? `\x1b[36m[${logMessage.container}]\x1b[0m ` : '';
-      const logLine = `${containerPrefix}${logMessage.message}\r\n`;
+      // Store raw log entry for grep filtering
+      rawLogsRef.current.push({
+        container: logMessage.container,
+        message: logMessage.message,
+      });
 
-      xtermRef.current.write(logLine);
-      logBufferRef.current += logLine;
+      // Limit stored logs to prevent memory issues
+      if (rawLogsRef.current.length > 10000) {
+        rawLogsRef.current = rawLogsRef.current.slice(-5000);
+      }
+
+      // Check if we should display this log (grep filtering uses refs to avoid callback deps)
+      const currentSearchMode = searchModeRef.current;
+      const currentSearchTerm = searchTermRef.current;
+      const currentCaseSensitive = caseSensitiveRef.current;
+
+      const shouldDisplay = currentSearchMode !== 'grep' || !currentSearchTerm ||
+        matchesGrepPattern(logMessage.message, currentSearchTerm, currentCaseSensitive);
+
+      if (shouldDisplay) {
+        const containerPrefix = logMessage.container ? `\x1b[36m[${logMessage.container}]\x1b[0m ` : '';
+        const logLine = `${containerPrefix}${logMessage.message}\r\n`;
+        xtermRef.current.write(logLine);
+        logBufferRef.current += logLine;
+      }
 
       // Update available containers
       if (logMessage.container) {
@@ -431,7 +534,7 @@ export const TerminalLogViewer: React.FC<TerminalLogViewerProps> = ({
           return Array.from(merged).sort();
         });
       }
-    }, [allPodContainers]),
+    }, [allPodContainers, matchesGrepPattern]),
     onError: useCallback((error: string) => {
       if (xtermRef.current) {
         xtermRef.current.write(`\x1b[31mError: ${error}\x1b[0m\r\n`);
@@ -452,33 +555,40 @@ export const TerminalLogViewer: React.FC<TerminalLogViewerProps> = ({
     if (xtermRef.current) {
       xtermRef.current.clear();
       logBufferRef.current = '';
+      rawLogsRef.current = [];
     }
   }, [selectedContainer]);
+
+  // Get search pattern based on mode
+  const getSearchPattern = useCallback((term: string, mode: 'simple' | 'regex' | 'grep') => {
+    if (mode === 'regex') {
+      return term;
+    } else if (mode === 'grep') {
+      return term
+        .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        .replace(/\\\*/g, '.*')
+        .replace(/\\\?/g, '.');
+    } else {
+      return term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+  }, []);
 
   // Search functionality
   const handleSearch = useCallback((direction: 'next' | 'prev') => {
     if (!searchAddonRef.current || !searchTerm) return;
 
-    let searchPattern = searchTerm;
-
-    // Process search term based on mode
-    if (searchMode === 'regex') {
-      // Use search term as-is for regex
-      searchPattern = searchTerm;
-    } else if (searchMode === 'grep') {
-      // Convert grep-style wildcards to regex
-      searchPattern = searchTerm
-        .replace(/[.*+?^${}()|[\]\\]/g, '\\$&') // Escape special chars first
-        .replace(/\\\*/g, '.*')  // * becomes .*
-        .replace(/\\\?/g, '.');  // ? becomes .
-    } else {
-      // Simple mode - escape all special characters
-      searchPattern = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    }
-
+    const searchPattern = getSearchPattern(searchTerm, searchMode);
     const searchOptions = {
       regex: searchMode === 'regex' || searchMode === 'grep',
       caseSensitive: caseSensitive,
+      decorations: {
+        matchBackground: '#FFFF00',
+        matchBorder: '#FFFF00',
+        matchOverviewRuler: '#FFFF00',
+        activeMatchBackground: '#FF6600',
+        activeMatchBorder: '#FF6600',
+        activeMatchColorOverviewRuler: '#FF6600',
+      },
     };
 
     if (direction === 'next') {
@@ -486,13 +596,42 @@ export const TerminalLogViewer: React.FC<TerminalLogViewerProps> = ({
     } else {
       searchAddonRef.current.findPrevious(searchPattern, searchOptions);
     }
-  }, [searchTerm, searchMode, caseSensitive]);
+  }, [searchTerm, searchMode, caseSensitive, getSearchPattern]);
+
+  // Auto-search when term changes in simple/regex mode (to show highlights)
+  useEffect(() => {
+    if (searchMode === 'grep') return; // Grep mode filters, doesn't highlight
+    if (!searchAddonRef.current || !searchTerm) {
+      // Clear search when term is empty
+      searchAddonRef.current?.clearDecorations();
+      return;
+    }
+
+    // Trigger search to show highlights
+    const searchPattern = getSearchPattern(searchTerm, searchMode);
+    const searchOptions = {
+      regex: searchMode === 'regex',
+      caseSensitive: caseSensitive,
+      decorations: {
+        matchBackground: '#FFFF00',
+        matchBorder: '#FFFF00',
+        matchOverviewRuler: '#FFFF00',
+        activeMatchBackground: '#FF6600',
+        activeMatchBorder: '#FF6600',
+        activeMatchColorOverviewRuler: '#FF6600',
+      },
+    };
+
+    // Use findNext to highlight matches
+    searchAddonRef.current.findNext(searchPattern, searchOptions);
+  }, [searchTerm, searchMode, caseSensitive, getSearchPattern]);
 
   // Clear terminal
   const handleClear = useCallback(() => {
     if (xtermRef.current) {
       xtermRef.current.clear();
       logBufferRef.current = '';
+      rawLogsRef.current = [];
       toast.success('Logs cleared');
     }
   }, []);

@@ -410,7 +410,6 @@ const deploymentsColumnConfig = (config: string, cluster: string) => ({
     { title: 'Desired', accessorKey: 'desired' },
     { title: 'Updated', accessorKey: 'updated' },
     { title: 'Available', accessorKey: 'available' },
-    { title: 'Conditions', accessorKey: 'conditions' },
     { title: 'Age', accessorKey: 'age' }
   ],
   queryParams: { config, cluster },

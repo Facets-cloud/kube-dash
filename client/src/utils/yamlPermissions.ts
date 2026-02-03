@@ -69,7 +69,11 @@ export async function checkYamlEditPermission(params: {
 /**
  * Get a user-friendly message for permission denial
  */
-export function getPermissionDenialMessage(result: YamlEditPermissionResult): string {
+export function getPermissionDenialMessage(result: YamlEditPermissionResult | null | undefined): string {
+  if (!result) {
+    return 'Permission check in progress...';
+  }
+
   if (result.allowed) {
     return '';
   }
