@@ -1,5 +1,14 @@
 import { ContainerCardProps, PodDetailsSpec, PodDetailsStatus } from "@/types";
 
+// Determine the container state from the status object
+const getContainerState = (containerStatus: PodDetailsStatus['containerStatuses'][0] | undefined): 'running' | 'waiting' | 'terminated' | 'unknown' => {
+  if (!containerStatus?.state) return 'unknown';
+  if (containerStatus.state.running) return 'running';
+  if (containerStatus.state.terminated) return 'terminated';
+  if (containerStatus.state.waiting) return 'waiting';
+  return 'unknown';
+};
+
 const createContainerData = (podSpec: PodDetailsSpec, podStatus: PodDetailsStatus, type: 'containers' | 'initContainers') => {
   const containersData: ContainerCardProps[] = [];
   podSpec[type]?.forEach(({ name: containerName, image, command, terminationMessagePolicy, imagePullPolicy }) => {
@@ -16,7 +25,11 @@ const createContainerData = (podSpec: PodDetailsSpec, podStatus: PodDetailsStatu
       restartReason: containerStatus?.lastState.terminated?.reason,
       restarts: containerStatus?.restartCount,
       started: containerStatus?.started,
-      terminationMessagePolicy: terminationMessagePolicy
+      terminationMessagePolicy: terminationMessagePolicy,
+      // Add state info for proper status display
+      state: getContainerState(containerStatus),
+      exitCode: containerStatus?.state.terminated?.exitCode,
+      terminationReason: containerStatus?.state.terminated?.reason
     };
     containersData.push(data);
   });

@@ -2,11 +2,62 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { createContainerData, defaultOrValue } from "@/utils";
 
 import { Badge } from "@/components/ui/badge";
+import { ContainerCardProps } from "@/types";
 import { CopyToClipboard } from "@/components/app/Common/CopyToClipboard";
 import { CubeIcon } from "@radix-ui/react-icons";
 import { memo } from "react";
 import { useAppSelector } from "@/redux/hooks";
 
+// Render container status badges based on container state
+function ContainerStatusBadges({ state, exitCode, terminationReason, started, ready }: Pick<ContainerCardProps, 'state' | 'exitCode' | 'terminationReason' | 'started' | 'ready'>) {
+  // Terminated state - check if completed successfully or with error
+  if (state === 'terminated') {
+    const isSuccess = exitCode === 0;
+    if (isSuccess) {
+      return (
+        <>
+          <Badge variant="default">Completed</Badge>
+          <Badge className="ml-1" variant="outline">Exit 0</Badge>
+        </>
+      );
+    } else {
+      return (
+        <>
+          <Badge variant="destructive">{terminationReason || 'Terminated'}</Badge>
+          <Badge className="ml-1" variant="outline">Exit {exitCode ?? '?'}</Badge>
+        </>
+      );
+    }
+  }
+
+  // Running state
+  if (state === 'running') {
+    return (
+      <>
+        <Badge variant="default">Running</Badge>
+        <Badge className="ml-1" variant={ready ? 'secondary' : 'outline'}>{ready ? 'Ready' : 'Not Ready'}</Badge>
+      </>
+    );
+  }
+
+  // Waiting state
+  if (state === 'waiting') {
+    return (
+      <>
+        <Badge variant="outline">Waiting</Badge>
+        <Badge className="ml-1" variant="outline">Not Ready</Badge>
+      </>
+    );
+  }
+
+  // Fallback for unknown state
+  return (
+    <>
+      {started ? <Badge variant="default">Started</Badge> : <Badge variant="destructive">Not Started</Badge>}
+      {ready ? <Badge className="ml-1" variant="secondary">Ready</Badge> : <Badge className="ml-1" variant="destructive">Not Ready</Badge>}
+    </>
+  );
+}
 
 const PodDetailsContainer = memo(function () {
   const {
@@ -27,7 +78,7 @@ const PodDetailsContainer = memo(function () {
             <CardContent className="px-4">
               <div className="items-start justify-center gap-6 rounded-lg grid-cols-1 lg:grid-cols-2 sm:grid">
                 {
-                  initContainerCards.map(({ image, command, imageId, containerId, imagePullPolicy, lastRestart, name, ready, restartReason, restarts, started, terminationMessagePolicy }) => {
+                  initContainerCards.map(({ image, command, imageId, containerId, imagePullPolicy, lastRestart, name, ready, restartReason, restarts, started, terminationMessagePolicy, state, exitCode, terminationReason }) => {
                     return (
                       <div key={name} className="grid items-start">
                         <Card className="shadow-none rounded-lg border-dashed">
@@ -38,12 +89,7 @@ const PodDetailsContainer = memo(function () {
                                 <div className="text-sm font-normal basis-2/3 break-all">{name}</div>
                               </div>
                               <div>
-                                {
-                                  started ? <Badge variant="default">Started</Badge> : <Badge variant="destructive">Not Started</Badge>
-                                }
-                                {
-                                  ready ? <Badge className="ml-1" variant="secondary">Ready</Badge> : <Badge className="ml-1" variant="destructive">Not Ready</Badge>
-                                }
+                                <ContainerStatusBadges state={state} exitCode={exitCode} terminationReason={terminationReason} started={started} ready={ready} />
                               </div>
                             </CardTitle>
                           </CardHeader>
@@ -167,7 +213,7 @@ const PodDetailsContainer = memo(function () {
           <CardContent className="px-4">
             <div className="items-start justify-center gap-6 rounded-lg grid-cols-1 lg:grid-cols-2 sm:grid">
               {
-                containerCards.map(({ image, command, imageId, containerId, imagePullPolicy, lastRestart, name, ready, restartReason, restarts, started, terminationMessagePolicy }) => {
+                containerCards.map(({ image, command, imageId, containerId, imagePullPolicy, lastRestart, name, ready, restartReason, restarts, started, terminationMessagePolicy, state, exitCode, terminationReason }) => {
                   return (
                     <div key={name} className="grid items-start">
                       <Card className="shadow-none rounded-lg border-dashed">
@@ -178,12 +224,7 @@ const PodDetailsContainer = memo(function () {
                               <div className="text-sm font-normal basis-2/3 break-all">{name}</div>
                             </div>
                             <div>
-                              {
-                                started ? <Badge variant="default">Started</Badge> : <Badge variant="destructive">Not Started</Badge>
-                              }
-                              {
-                                ready ? <Badge className="ml-1" variant="secondary">Ready</Badge> : <Badge className="ml-1" variant="destructive">Not Ready</Badge>
-                              }
+                              <ContainerStatusBadges state={state} exitCode={exitCode} terminationReason={terminationReason} started={started} ready={ready} />
                             </div>
                           </CardTitle>
                         </CardHeader>

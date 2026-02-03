@@ -95,7 +95,9 @@ const TableCells = <T extends ClusterDetails>({
     return <TimeCell cellValue={value} />;
   }
   if (type === 'Ready' || type === 'Current') {
-    return <CurrentByDesiredCell cellValue={value} />;
+    // Pass status for pods/jobs so completed workloads show greyed out counts
+    const status = (row.original as any)?.status;
+    return <CurrentByDesiredCell cellValue={value} status={status} />;
   }
   if (type === 'Status' || type === 'reason' || type === 'Condition Status') {
     return <StatusCell cellValue={value} />;

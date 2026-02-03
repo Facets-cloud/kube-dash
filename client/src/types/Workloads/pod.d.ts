@@ -196,6 +196,8 @@ type PodDetails = {
   status: PodDetailsStatus
 };
 
+type ContainerState = 'running' | 'waiting' | 'terminated' | 'unknown';
+
 type ContainerCardProps = {
   name: string;
   image: string;
@@ -209,6 +211,10 @@ type ContainerCardProps = {
   restartReason: string | undefined;
   started: boolean | undefined;
   ready: boolean | undefined;
+  // Container state info for proper status display
+  state: ContainerState;
+  exitCode?: number;
+  terminationReason?: string;
 };
 
 type PodSocketResponse = {
